@@ -1,0 +1,4 @@
+org.springframework.test.context.ContextCustomizerFactory = \
+    com.geestack.www.config.SqlTestContainersSpringContextCustomizerFactory,com.\
+    geestack.www.config.TestContainersSpringContextCustomizerFactory,com.\
+    geestack.www.config.RedisTestContainersSpringContextCustomizerFactory
