@@ -63,7 +63,7 @@
 **Response**
 ```json
 {
-  "status": "OK",
+  "status": "OK | TIMEOUT_BEST_EFFORT | CANCELLED",
   "score": {
     "volumeUtilization": 0.78,
     "remainingVolume": 1234567,
@@ -81,6 +81,11 @@
   }
 }
 ```
+
+`status` 语义：
+- `OK`：在时间/迭代预算内完成
+- `TIMEOUT_BEST_EFFORT`：达到 `maxDurationMs` 后返回当前最优
+- `CANCELLED`：前端取消导致的中止（可选实现；MVP 允许直接终止请求）
 
 ### 2.2 校验（手动摆放后）
 `POST /api/packing/validate`
@@ -123,7 +128,8 @@
     "items": [/* Item */],
     "placements": [/* Placement */],
     "score": {/* score */},
-    "meta": {/* meta */}
+    "meta": {/* meta */},
+    "viewPngBase64": "data:image/png;base64,..." 
   }
 }
 ```
@@ -131,6 +137,10 @@
 **Response**
 - `application/zip`（包含 `plan.json`、`items.csv`、`view.png`）
 - 或返回 `exportId`（如采用异步导出；MVP 优先同步）
+
+说明：
+- `view.png` 由前端 Viewer 生成截图并以 `viewPngBase64` 传入（MVP 不要求后端渲染 3D 截图）。
+- 若 `viewPngBase64` 为空，后端可以不产出 `view.png`，但必须在返回头或 json 中提示缺失。
 
 ## 3. 约定
 - 所有尺寸单位需统一（建议：mm；重量：kg）。若采用其它单位，必须在 `meta` 声明并全链路一致。
