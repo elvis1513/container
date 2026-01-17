@@ -69,7 +69,9 @@
         "csv": "Export CSV",
         "zip": "Export All (ZIP)",
         "success": "Exported successfully",
-        "error": "Export failed"
+        "error": "Export failed",
+        "validationError": "Cannot export: {reason}",
+        "zipNotSupported": "Your browser doesn't support ZIP export"
       },
       "viewer": {
         "title": "3D View",

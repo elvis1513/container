@@ -183,3 +183,26 @@ export interface SolveState {
   startTime: number | null;
   duration: number | null;
 }
+
+// Export types (PR#2A)
+export interface ExportValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings?: string[];
+}
+
+export interface ExportJsonData {
+  version: string;
+  exportedAt: string;
+  request: {
+    containers: Container[];
+    items: Item[];
+    options?: {
+      objective?: 'MAX_VOLUME_UTILIZATION' | 'MAX_ITEM_COUNT';
+      allowSplitAcrossContainers?: boolean;
+      seed?: number;
+      maxDurationMs?: number;
+    };
+  };
+  solution: PackingSolution;
+}

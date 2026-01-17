@@ -69,7 +69,9 @@
         "csv": "导出 CSV",
         "zip": "导出全部 (ZIP)",
         "success": "导出成功",
-        "error": "导出失败"
+        "error": "导出失败",
+        "validationError": "无法导出：{reason}",
+        "zipNotSupported": "您的浏览器不支持 ZIP 导出"
       },
       "viewer": {
         "title": "3D 视图",

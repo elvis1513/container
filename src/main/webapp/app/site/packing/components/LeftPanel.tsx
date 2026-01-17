@@ -4,11 +4,11 @@
  * PR#1: Forms with proper labels, no placeholder-only inputs
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Translate } from 'app/platform/i18n';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOW, TRANSITION, Z_INDEX } from '../../theme/tokens';
-import { STANDARD_CONTAINERS } from '../api';
-import type { Container, Item, ItemFormData, ContainerFormData, SolveState } from '../types';
+import { STANDARD_CONTAINERS, validateExportData, supportsCompressionStream } from '../api';
+import type { Container, Item, ItemFormData, ContainerFormData, SolveState, PackingSolution } from '../types';
 
 interface LeftPanelProps {
   containers: Container[];
@@ -19,7 +19,177 @@ interface LeftPanelProps {
   onSolve: () => void;
   onExportJson: () => void;
   onExportCsv: () => void;
+  onExportZip: () => void;
 }
+
+// Helper: Generate aria-label for disabled export buttons
+const getExportButtonLabelHelper = (solveState: SolveState, format: string): string => {
+  if (solveState.status === 'IDLE' || !solveState.solution) {
+    return `Export disabled: No solution available`;
+  }
+  if (solveState.status === 'ERROR' || solveState.solution.status === 'ERROR') {
+    return `Export disabled: Solution contains errors`;
+  }
+  if (solveState.solution.placements.length === 0) {
+    return `Export disabled: No items placed`;
+  }
+  return `Export as ${format}`;
+};
+
+// Helper: Format volume for display
+const formatVolume = (mm3: number): string => {
+  const m3 = mm3 / 1_000_000_000;
+  return m3.toFixed(3);
+};
+
+// Helper: Validate custom container form
+const validateCustomContainer = (data: ContainerFormData): Record<string, string> => {
+  const errors: Record<string, string> = {};
+  if (!data.name) errors.name = 'site.packing.validation.required';
+  if (!data.length || Number(data.length) <= 0) errors.length = 'site.packing.validation.positive';
+  if (!data.width || Number(data.width) <= 0) errors.width = 'site.packing.validation.positive';
+  if (!data.height || Number(data.height) <= 0) errors.height = 'site.packing.validation.positive';
+  if (!data.maxWeight || Number(data.maxWeight) <= 0) errors.maxWeight = 'site.packing.validation.positive';
+  return errors;
+};
+
+// Helper: Validate item form
+const validateItemForm = (data: ItemFormData): Record<string, string> => {
+  const errors: Record<string, string> = {};
+  if (!data.name) errors.name = 'site.packing.validation.required';
+  if (!data.length || Number(data.length) <= 0) errors.length = 'site.packing.validation.positive';
+  if (!data.width || Number(data.width) <= 0) errors.width = 'site.packing.validation.positive';
+  if (!data.height || Number(data.height) <= 0) errors.height = 'site.packing.validation.positive';
+  if (!data.weight || Number(data.weight) <= 0) errors.weight = 'site.packing.validation.positive';
+  if (!data.quantity || Number(data.quantity) < 1) errors.quantity = 'site.packing.validation.invalidQuantity';
+  return errors;
+};
+
+// Helper: Create default item form data
+const createDefaultItemForm = (): ItemFormData => ({
+  id: `ITEM-${Date.now()}`,
+  name: '',
+  length: '',
+  width: '',
+  height: '',
+  weight: '',
+  quantity: '1',
+  rotations: ['LWH', 'WLH', 'LHW', 'WHL', 'HLW', 'HWL'],
+  stackable: true,
+  fragile: false,
+  priority: '0',
+});
+
+// Component: Solution Result Display
+interface SolutionResultProps {
+  solution: PackingSolution;
+  warnings?: string[];
+  onExportJson: () => void;
+  onExportCsv: () => void;
+  onExportZip: () => void;
+  canExport: boolean;
+  supportsZip: boolean;
+  getExportButtonLabel: (format: string) => string;
+}
+
+const SolutionResult: React.FC<SolutionResultProps> = ({
+  solution,
+  warnings,
+  onExportJson,
+  onExportCsv,
+  onExportZip,
+  canExport,
+  supportsZip,
+  getExportButtonLabel,
+}) => {
+  return (
+    <section style={styles.section}>
+      <h2 style={styles.sectionTitle}>
+        <Translate contentKey="site.packing.result.title">Solution</Translate>
+      </h2>
+
+      <div style={styles.resultGrid}>
+        <div style={styles.resultItem}>
+          <span style={styles.resultLabel}>
+            <Translate contentKey="site.packing.result.volumeUtilization">Volume Utilization</Translate>:
+          </span>
+          <span style={styles.resultValue}>{(solution.score.volumeUtilization * 100).toFixed(1)}%</span>
+        </div>
+        <div style={styles.resultItem}>
+          <span style={styles.resultLabel}>
+            <Translate contentKey="site.packing.result.remainingVolume">Remaining Space</Translate>:
+          </span>
+          <span style={styles.resultValue}>{formatVolume(solution.score.remainingVolume)} m³</span>
+        </div>
+        <div style={styles.resultItem}>
+          <span style={styles.resultLabel}>
+            <Translate contentKey="site.packing.result.totalWeight">Total Weight</Translate>:
+          </span>
+          <span style={styles.resultValue}>{solution.score.totalWeight.toFixed(1)} kg</span>
+        </div>
+        <div style={styles.resultItem}>
+          <span style={styles.resultLabel}>
+            <Translate contentKey="site.packing.result.itemCount">Items Placed</Translate>:
+          </span>
+          <span style={styles.resultValue}>{solution.score.itemCount}</span>
+        </div>
+        <div style={styles.resultItem}>
+          <span style={styles.resultLabel}>
+            <Translate contentKey="site.packing.result.duration">Solve Time</Translate>:
+          </span>
+          <span style={styles.resultValue}>{solution.meta.durationMs} ms</span>
+        </div>
+      </div>
+
+      {solution.unplaced && solution.unplaced.length > 0 && (
+        <div style={styles.warningBox}>
+          <strong>
+            <Translate contentKey="site.packing.result.unplaced">Unplaced Items</Translate>:
+          </strong>{' '}
+          {solution.unplaced.length}
+        </div>
+      )}
+
+      {warnings && warnings.length > 0 && (
+        <div style={styles.warningBox}>
+          <strong>Warnings:</strong> {warnings.join(', ')}
+        </div>
+      )}
+
+      <div style={styles.exportButtons}>
+        <button
+          type="button"
+          style={{ ...styles.exportButton, ...(!canExport ? styles.exportButtonDisabled : {}) }}
+          onClick={onExportJson}
+          disabled={!canExport}
+          aria-label={getExportButtonLabel('JSON')}
+        >
+          <Translate contentKey="site.packing.export.json">Export JSON</Translate>
+        </button>
+        <button
+          type="button"
+          style={{ ...styles.exportButton, ...(!canExport ? styles.exportButtonDisabled : {}) }}
+          onClick={onExportCsv}
+          disabled={!canExport}
+          aria-label={getExportButtonLabel('CSV')}
+        >
+          <Translate contentKey="site.packing.export.csv">Export CSV</Translate>
+        </button>
+        {supportsZip && (
+          <button
+            type="button"
+            style={{ ...styles.exportButton, ...(!canExport ? styles.exportButtonDisabled : {}) }}
+            onClick={onExportZip}
+            disabled={!canExport}
+            aria-label={getExportButtonLabel('ZIP')}
+          >
+            <Translate contentKey="site.packing.export.zip">Export All (ZIP)</Translate>
+          </button>
+        )}
+      </div>
+    </section>
+  );
+};
 
 export const LeftPanel: React.FC<LeftPanelProps> = ({
   containers,
@@ -30,6 +200,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
   onSolve,
   onExportJson,
   onExportCsv,
+  onExportZip,
 }) => {
   // Container form state
   const [selectedContainerId, setSelectedContainerId] = useState<string>(STANDARD_CONTAINERS[0].id);
@@ -44,19 +215,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
   });
 
   // Item form state
-  const [itemForm, setItemForm] = useState<ItemFormData>({
-    id: `ITEM-${Date.now()}`,
-    name: '',
-    length: '',
-    width: '',
-    height: '',
-    weight: '',
-    quantity: '1',
-    rotations: ['LWH', 'WLH', 'LHW', 'WHL', 'HLW', 'HWL'],
-    stackable: true,
-    fragile: false,
-    priority: '0',
-  });
+  const [itemForm, setItemForm] = useState<ItemFormData>(createDefaultItemForm);
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -87,14 +246,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
 
   // Apply custom container
   const applyCustomContainer = useCallback(() => {
-    const newErrors: Record<string, string> = {};
-
-    // Validate
-    if (!customContainer.name) newErrors.name = 'site.packing.validation.required';
-    if (!customContainer.length || Number(customContainer.length) <= 0) newErrors.length = 'site.packing.validation.positive';
-    if (!customContainer.width || Number(customContainer.width) <= 0) newErrors.width = 'site.packing.validation.positive';
-    if (!customContainer.height || Number(customContainer.height) <= 0) newErrors.height = 'site.packing.validation.positive';
-    if (!customContainer.maxWeight || Number(customContainer.maxWeight) <= 0) newErrors.maxWeight = 'site.packing.validation.positive';
+    const newErrors = validateCustomContainer(customContainer);
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -124,15 +276,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
 
   // Add item
   const addItem = useCallback(() => {
-    const newErrors: Record<string, string> = {};
-
-    // Validate
-    if (!itemForm.name) newErrors.name = 'site.packing.validation.required';
-    if (!itemForm.length || Number(itemForm.length) <= 0) newErrors.length = 'site.packing.validation.positive';
-    if (!itemForm.width || Number(itemForm.width) <= 0) newErrors.width = 'site.packing.validation.positive';
-    if (!itemForm.height || Number(itemForm.height) <= 0) newErrors.height = 'site.packing.validation.positive';
-    if (!itemForm.weight || Number(itemForm.weight) <= 0) newErrors.weight = 'site.packing.validation.positive';
-    if (!itemForm.quantity || Number(itemForm.quantity) < 1) newErrors.quantity = 'site.packing.validation.invalidQuantity';
+    const newErrors = validateItemForm(itemForm);
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -160,19 +304,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
     onItemsChange([...items, item]);
 
     // Reset form for next item
-    setItemForm({
-      id: `ITEM-${Date.now()}`,
-      name: '',
-      length: '',
-      width: '',
-      height: '',
-      weight: '',
-      quantity: '1',
-      rotations: ['LWH', 'WLH', 'LHW', 'WHL', 'HLW', 'HWL'],
-      stackable: true,
-      fragile: false,
-      priority: '0',
-    });
+    setItemForm(createDefaultItemForm());
     setErrors({});
   }, [itemForm, items, onItemsChange]);
 
@@ -200,11 +332,10 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
     [itemForm.rotations, updateItemForm],
   );
 
-  // Format volume for display
-  const formatVolume = (mm3: number): string => {
-    const m3 = mm3 / 1_000_000_000;
-    return m3.toFixed(3);
-  };
+  // Export validation (PR#2A) - using useMemo to avoid recalculation
+  const exportValidation = useMemo(() => validateExportData(solveState), [solveState]);
+  const canExport = exportValidation.valid;
+  const supportsZip = supportsCompressionStream();
 
   const container = containers[0];
   const hasSolution = solveState.status === 'SUCCESS' && solveState.solution;
@@ -248,6 +379,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               </label>
               <input
                 id="container-name"
+                name="container-name"
                 type="text"
                 style={errors.name ? styles.inputError : styles.input}
                 value={customContainer.name}
@@ -269,6 +401,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
                 </label>
                 <input
                   id="container-l"
+                  name="container-l"
                   type="number"
                   inputMode="numeric"
                   style={errors.length ? styles.inputError : styles.input}
@@ -288,6 +421,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
                 </label>
                 <input
                   id="container-w"
+                  name="container-w"
                   type="number"
                   inputMode="numeric"
                   style={errors.width ? styles.inputError : styles.input}
@@ -307,6 +441,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
                 </label>
                 <input
                   id="container-h"
+                  name="container-h"
                   type="number"
                   inputMode="numeric"
                   style={errors.height ? styles.inputError : styles.input}
@@ -381,6 +516,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
             </label>
             <input
               id="item-name"
+              name="item-name"
               type="text"
               style={errors.name ? styles.inputError : styles.input}
               value={itemForm.name}
@@ -401,6 +537,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               </label>
               <input
                 id="item-l"
+                name="item-l"
                 type="number"
                 inputMode="numeric"
                 style={errors.length ? styles.inputError : styles.input}
@@ -420,6 +557,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               </label>
               <input
                 id="item-w"
+                name="item-w"
                 type="number"
                 inputMode="numeric"
                 style={errors.width ? styles.inputError : styles.input}
@@ -439,6 +577,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               </label>
               <input
                 id="item-h"
+                name="item-h"
                 type="number"
                 inputMode="numeric"
                 style={errors.height ? styles.inputError : styles.input}
@@ -461,6 +600,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               </label>
               <input
                 id="item-weight"
+                name="item-weight"
                 type="number"
                 inputMode="numeric"
                 step="0.1"
@@ -481,6 +621,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               </label>
               <input
                 id="item-quantity"
+                name="item-quantity"
                 type="number"
                 inputMode="numeric"
                 style={errors.quantity ? styles.inputError : styles.input}
@@ -504,6 +645,8 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               {(['LWH', 'WLH', 'LHW', 'WHL', 'HLW', 'HWL'] as const).map(rotation => (
                 <label key={rotation} style={styles.checkboxLabel}>
                   <input
+                    id={`rotation-${rotation}`}
+                    name={`rotation-${rotation}`}
                     type="checkbox"
                     checked={itemForm.rotations.includes(rotation)}
                     onChange={() => toggleRotation(rotation)}
@@ -518,6 +661,8 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
           <div style={styles.formGroup}>
             <label style={styles.checkboxLabel}>
               <input
+                id="item-stackable"
+                name="item-stackable"
                 type="checkbox"
                 checked={itemForm.stackable}
                 onChange={e => updateItemForm('stackable', e.target.checked)}
@@ -527,6 +672,8 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
             </label>
             <label style={styles.checkboxLabel}>
               <input
+                id="item-fragile"
+                name="item-fragile"
                 type="checkbox"
                 checked={itemForm.fragile}
                 onChange={e => updateItemForm('fragile', e.target.checked)}
@@ -596,62 +743,16 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
 
       {/* Result Section */}
       {hasSolution && (
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>
-            <Translate contentKey="site.packing.result.title">Solution</Translate>
-          </h2>
-
-          <div style={styles.resultGrid}>
-            <div style={styles.resultItem}>
-              <span style={styles.resultLabel}>
-                <Translate contentKey="site.packing.result.volumeUtilization">Volume Utilization</Translate>:
-              </span>
-              <span style={styles.resultValue}>{(solveState.solution.score.volumeUtilization * 100).toFixed(1)}%</span>
-            </div>
-            <div style={styles.resultItem}>
-              <span style={styles.resultLabel}>
-                <Translate contentKey="site.packing.result.remainingVolume">Remaining Space</Translate>:
-              </span>
-              <span style={styles.resultValue}>{formatVolume(solveState.solution.score.remainingVolume)} m³</span>
-            </div>
-            <div style={styles.resultItem}>
-              <span style={styles.resultLabel}>
-                <Translate contentKey="site.packing.result.totalWeight">Total Weight</Translate>:
-              </span>
-              <span style={styles.resultValue}>{solveState.solution.score.totalWeight.toFixed(1)} kg</span>
-            </div>
-            <div style={styles.resultItem}>
-              <span style={styles.resultLabel}>
-                <Translate contentKey="site.packing.result.itemCount">Items Placed</Translate>:
-              </span>
-              <span style={styles.resultValue}>{solveState.solution.score.itemCount}</span>
-            </div>
-            <div style={styles.resultItem}>
-              <span style={styles.resultLabel}>
-                <Translate contentKey="site.packing.result.duration">Solve Time</Translate>:
-              </span>
-              <span style={styles.resultValue}>{solveState.solution.meta.durationMs} ms</span>
-            </div>
-          </div>
-
-          {solveState.solution.unplaced && solveState.solution.unplaced.length > 0 && (
-            <div style={styles.warningBox}>
-              <strong>
-                <Translate contentKey="site.packing.result.unplaced">Unplaced Items</Translate>:
-              </strong>{' '}
-              {solveState.solution.unplaced.length}
-            </div>
-          )}
-
-          <div style={styles.exportButtons}>
-            <button type="button" style={styles.exportButton} onClick={onExportJson}>
-              <Translate contentKey="site.packing.export.json">Export JSON</Translate>
-            </button>
-            <button type="button" style={styles.exportButton} onClick={onExportCsv}>
-              <Translate contentKey="site.packing.export.csv">Export CSV</Translate>
-            </button>
-          </div>
-        </section>
+        <SolutionResult
+          solution={solveState.solution}
+          warnings={exportValidation.warnings}
+          onExportJson={onExportJson}
+          onExportCsv={onExportCsv}
+          onExportZip={onExportZip}
+          canExport={canExport}
+          supportsZip={supportsZip}
+          getExportButtonLabel={format => getExportButtonLabelHelper(solveState, format)}
+        />
       )}
 
       {solveState.status === 'ERROR' && (
@@ -965,6 +1066,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: RADIUS.md,
     cursor: 'pointer',
     transition: `all ${TRANSITION.fast}`,
+  },
+  exportButtonDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
   },
 };
 

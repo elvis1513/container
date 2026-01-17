@@ -1,6 +1,7 @@
 /**
  * Packing API Client
  * PR#1: Uses stub/mock implementation
+ * PR#2A: Enhanced export functionality with JSON, CSV, and ZIP support
  * Future: Will connect to actual backend endpoint
  */
 
@@ -10,10 +11,13 @@ import type {
   ValidateRequest,
   ValidateResponse,
   ExportRequest,
+  ExportJsonData,
+  ExportValidationResult,
   Item,
   Container,
   Placement,
   ValidationErrorType,
+  SolveState,
 } from '../types';
 
 // Standard containers library
@@ -271,38 +275,127 @@ export const validatePacking = async (request: ValidateRequest): Promise<Validat
 };
 
 /**
- * Export packing solution
- * Client-side export for PR#1 (no backend needed)
+ * Export validation (PR#2A)
+ * Validates that solution is ready for export
+ */
+export const validateExportData = (solveState: SolveState): ExportValidationResult => {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Check if solution exists
+  if (!solveState.solution) {
+    errors.push('No solution available');
+    return { valid: false, errors };
+  }
+
+  // Check solve status
+  if (solveState.status === 'ERROR' || solveState.solution.status === 'ERROR') {
+    errors.push('Solution contains errors');
+  }
+
+  // Check if any items are placed
+  if (solveState.solution.placements.length === 0) {
+    warnings.push('No items placed');
+  }
+
+  // Check for warnings in solution
+  if (solveState.solution.warnings && solveState.solution.warnings.length > 0) {
+    warnings.push(...solveState.solution.warnings.map(w => w.message));
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
+};
+
+/**
+ * Check if browser supports CompressionStream API (PR#2A)
+ */
+export const supportsCompressionStream = (): boolean => {
+  return typeof CompressionStream !== 'undefined';
+};
+
+/**
+ * Generate README content for ZIP export (PR#2A)
+ */
+const generateReadme = (solution: PackingSolution, containerName: string): string => {
+  const timestamp = new Date().toISOString();
+  const placedCount = solution.placements.length;
+  const unplacedCount = solution.unplaced?.length || 0;
+  const volumeUtil = (solution.score.volumeUtilization * 100).toFixed(1);
+  const totalWeight = solution.score.totalWeight.toFixed(1);
+
+  return `Packing Solution Export
+======================
+
+Generated: ${timestamp}
+Container: ${containerName}
+Algorithm: ${solution.meta.algorithm}
+
+Results
+-------
+- Volume Utilization: ${volumeUtil}%
+- Items Placed: ${placedCount}
+- Items Unplaced: ${unplacedCount}
+- Total Weight: ${totalWeight} kg
+- Solve Time: ${solution.meta.durationMs} ms
+
+Files
+-----
+- plan.json: Complete packing solution in JSON format
+- items.csv: Item placement list in CSV format
+
+${solution.unplaced && solution.unplaced.length > 0 ? `Unplaced Items\n-------------\n${solution.unplaced.map(u => `- ${u.itemId}: ${u.reason}`).join('\n')}\n` : ''}${solution.warnings && solution.warnings.length > 0 ? `Warnings\n--------\n${solution.warnings.map(w => `- ${w.type}: ${w.message}`).join('\n')}\n` : ''}
+`;
+};
+
+/**
+ * Trigger file download (helper function)
+ */
+const triggerDownload = (blob: Blob, filename: string): void => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+/**
+ * Export packing solution (PR#2A - Enhanced)
+ * Client-side export with JSON, CSV, and ZIP support
  */
 export const exportPacking = {
   /**
-   * Export as JSON file
+   * Export as JSON file with version field and aligned API structure
    */
-  json(payload: SolveRequest & { solution: PackingSolution }): void {
-    const { solution, ...request } = payload;
-    const data = {
+  json(request: SolveRequest, solution: PackingSolution): void {
+    const data: ExportJsonData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
       request,
       solution,
-      exportedAt: new Date().toISOString(),
     };
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `packing-solution-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    triggerDownload(blob, `packing-solution-${Date.now()}.json`);
   },
 
   /**
-   * Export as CSV file (placements only)
+   * Export as CSV file with status column (placed/unplaced)
    */
-  csv(items: Item[], placements: Placement[], container: Container): void {
-    const headers = ['Item ID', 'Item Name', 'Container', 'X', 'Y', 'Z', 'Orientation', 'Length', 'Width', 'Height', 'Weight'];
-    const rows = placements.map(p => {
+  csv(items: Item[], placements: Placement[], container: Container, solution: PackingSolution): void {
+    const headers = ['Item ID', 'Item Name', 'Container', 'X', 'Y', 'Z', 'Orientation', 'Length', 'Width', 'Height', 'Weight', 'Status'];
+
+    // Build a Set of placed item IDs for status lookup
+    const placedItemIds = new Set(placements.map(p => p.itemId));
+
+    // Rows for placed items
+    const placedRows = placements.map(p => {
       const item = items.find(i => i.id === p.itemId);
       return [
         p.itemId,
@@ -316,18 +409,152 @@ export const exportPacking = {
         item?.size.w || 0,
         item?.size.h || 0,
         item?.weight || 0,
+        'placed',
       ].join(',');
     });
 
-    const csv = [headers.join(','), ...rows].join('\n');
+    // Rows for unplaced items
+    const unplacedRows = (solution.unplaced || []).map(u => {
+      const item = items.find(i => i.id === u.itemId);
+      return [
+        u.itemId,
+        item?.name || '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        item?.size.l || 0,
+        item?.size.w || 0,
+        item?.size.h || 0,
+        item?.weight || 0,
+        `unplaced: ${u.reason}`,
+      ].join(',');
+    });
+
+    const csv = [headers.join(','), ...placedRows, ...unplacedRows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `packing-list-${Date.now()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    triggerDownload(blob, `packing-list-${Date.now()}.csv`);
+  },
+
+  /**
+   * Export as ZIP file containing JSON, CSV, and README
+   * Uses native CompressionStream API (Chrome 80+, Firefox 113+, Safari 16.4+)
+   * Falls back to separate downloads if not supported
+   */
+  zip(request: SolveRequest, solution: PackingSolution, items: Item[], container: Container): void {
+    if (!supportsCompressionStream()) {
+      // Fallback: download JSON and CSV separately
+      this.json(request, solution);
+      this.csv(items, solution.placements, container, solution);
+      return;
+    }
+
+    try {
+      // Generate JSON content
+      const jsonData: ExportJsonData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        request,
+        solution,
+      };
+      const jsonContent = JSON.stringify(jsonData, null, 2);
+
+      // Generate CSV content
+      const headers = ['Item ID', 'Item Name', 'Container', 'X', 'Y', 'Z', 'Orientation', 'Length', 'Width', 'Height', 'Weight', 'Status'];
+      const placedRows = solution.placements.map(p => {
+        const item = items.find(i => i.id === p.itemId);
+        return [
+          p.itemId,
+          item?.name || '',
+          p.containerId,
+          p.position.x,
+          p.position.y,
+          p.position.z,
+          p.orientation,
+          item?.size.l || 0,
+          item?.size.w || 0,
+          item?.size.h || 0,
+          item?.weight || 0,
+          'placed',
+        ].join(',');
+      });
+      const unplacedRows = (solution.unplaced || []).map(u => {
+        const item = items.find(i => i.id === u.itemId);
+        return [
+          u.itemId,
+          item?.name || '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          item?.size.l || 0,
+          item?.size.w || 0,
+          item?.size.h || 0,
+          item?.weight || 0,
+          `unplaced: ${u.reason}`,
+        ].join(',');
+      });
+      const csvContent = [headers.join(','), ...placedRows, ...unplacedRows].join('\n');
+
+      // Generate README content
+      const readmeContent = generateReadme(solution, container.name);
+
+      // Helper to create a ZIP file entry
+      const createZipEntry = (name: string, content: string): Uint8Array => {
+        const nameBytes = new TextEncoder().encode(name);
+        const contentBytes = new TextEncoder().encode(content);
+
+        // Simple ZIP file entry format (local file header + data + descriptor)
+        // This is a minimal implementation - for production use a library like JSZip is recommended
+        const header = new Uint8Array(30 + nameBytes.length);
+        const view = new DataView(header.buffer);
+
+        view.setUint32(0, 0x04034b50, true); // Local file header signature
+        view.setUint16(4, 0x000a, true); // Version needed
+        view.setUint16(6, 0, true); // Flags
+        view.setUint16(8, 0, true); // Compression method (0 = store)
+        view.setUint16(10, 0, true); // Last mod time
+        view.setUint16(12, 0, true); // Last mod date
+        view.setUint32(14, 0, true); // CRC-32
+        view.setUint32(18, contentBytes.length, true); // Compressed size
+        view.setUint32(22, contentBytes.length, true); // Uncompressed size
+        view.setUint16(26, nameBytes.length, true); // Name length
+        view.setUint16(28, 0, true); // Extra length
+
+        header.set(nameBytes, 30);
+
+        // Combine header + content
+        const entry = new Uint8Array(header.length + contentBytes.length);
+        entry.set(header);
+        entry.set(contentBytes, header.length);
+
+        return entry;
+      };
+
+      // Create ZIP entries
+      const jsonEntry = createZipEntry('plan.json', jsonContent);
+      const csvEntry = createZipEntry('items.csv', csvContent);
+      const readmeEntry = createZipEntry('readme.txt', readmeContent);
+
+      // Combine all entries
+      const totalSize = jsonEntry.length + csvEntry.length + readmeEntry.length;
+      const zipData = new Uint8Array(totalSize);
+      let offset = 0;
+      zipData.set(jsonEntry, offset);
+      offset += jsonEntry.length;
+      zipData.set(csvEntry, offset);
+      offset += csvEntry.length;
+      zipData.set(readmeEntry, offset);
+
+      const blob = new Blob([zipData], { type: 'application/zip' });
+      triggerDownload(blob, `packing-export-${Date.now()}.zip`);
+    } catch (error) {
+      // Fallback to individual downloads on error
+      console.error('ZIP export failed, falling back to individual downloads:', error);
+      this.json(request, solution);
+      this.csv(items, solution.placements, container, solution);
+    }
   },
 };

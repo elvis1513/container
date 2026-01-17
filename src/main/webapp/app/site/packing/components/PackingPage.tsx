@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Translate } from 'app/platform/i18n';
+import { Translate, LanguageSwitcher } from 'app/platform/i18n';
 import { COLORS, SPACING, TYPOGRAPHY } from '../../theme/tokens';
 import { STANDARD_CONTAINERS, solvePacking, exportPacking } from '../api';
 import type { Container, Item, SolveState, SolveRequest } from '../types';
@@ -113,17 +113,21 @@ export const PackingPage: React.FC = () => {
   const handleExportJson = useCallback(() => {
     if (!solveState.solution || !lastRequestRef.current) return;
 
-    exportPacking.json({
-      ...lastRequestRef.current,
-      solution: solveState.solution,
-    });
+    exportPacking.json(lastRequestRef.current, solveState.solution);
   }, [solveState]);
 
   // Handle export CSV
   const handleExportCsv = useCallback(() => {
     if (!solveState.solution || !containers.length) return;
 
-    exportPacking.csv(items, solveState.solution.placements, containers[0]);
+    exportPacking.csv(items, solveState.solution.placements, containers[0], solveState.solution);
+  }, [solveState, items, containers]);
+
+  // Handle export ZIP (PR#2A)
+  const handleExportZip = useCallback(() => {
+    if (!solveState.solution || !lastRequestRef.current || !containers.length) return;
+
+    exportPacking.zip(lastRequestRef.current, solveState.solution, items, containers[0]);
   }, [solveState, items, containers]);
 
   return (
@@ -138,6 +142,7 @@ export const PackingPage: React.FC = () => {
             <Translate contentKey="site.packing.description">Container loading optimization tool</Translate>
           </p>
         </div>
+        <LanguageSwitcher />
       </header>
 
       {/* Main Content */}
@@ -151,6 +156,7 @@ export const PackingPage: React.FC = () => {
           onSolve={handleSolve}
           onExportJson={handleExportJson}
           onExportCsv={handleExportCsv}
+          onExportZip={handleExportZip}
         />
         <RightCanvas solveState={solveState} />
       </main>

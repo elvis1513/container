@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
 
 // Create a configured axios instance for site modules
 // This isolates platform-level HTTP configuration from legacy code
@@ -14,15 +14,15 @@ export const createAxiosInstance = (config?: AxiosRequestConfig): AxiosInstance 
 
   // Request interceptor
   instance.interceptors.request.use(
-    config => {
+    requestConfig => {
       // Add CSRF token if available (following JHipster patterns)
       const csrfToken = getCsrfToken();
       if (csrfToken) {
-        config.headers['X-XSRF-TOKEN'] = csrfToken;
+        requestConfig.headers['X-XSRF-TOKEN'] = csrfToken;
       }
-      return config;
+      return requestConfig;
     },
-    error => Promise.reject(error),
+    error => Promise.reject(error instanceof Error ? error : new Error(String(error))),
   );
 
   // Response interceptor for error handling
@@ -32,23 +32,20 @@ export const createAxiosInstance = (config?: AxiosRequestConfig): AxiosInstance 
       if (error.response) {
         // Server responded with error status
         const { status, data } = error.response;
-        return Promise.reject({
-          status,
-          message: data?.message || data?.error || 'Request failed',
-          details: data,
-        });
+        const errorObj = new Error(data?.message || data?.error || 'Request failed') as Error & { status?: number; details?: unknown };
+        errorObj.status = status;
+        errorObj.details = data;
+        return Promise.reject(errorObj);
       } else if (error.request) {
         // Request made but no response
-        return Promise.reject({
-          message: 'No response from server',
-          details: error,
-        });
+        const errorObj = new Error('No response from server') as Error & { details?: unknown };
+        errorObj.details = error;
+        return Promise.reject(errorObj);
       } else {
         // Request setup error
-        return Promise.reject({
-          message: error.message || 'Request setup failed',
-          details: error,
-        });
+        const errorObj = new Error(error.message || 'Request setup failed') as Error & { details?: unknown };
+        errorObj.details = error;
+        return Promise.reject(errorObj);
       }
     },
   );

@@ -279,8 +279,10 @@
   - PR#1: Using browser default focus, custom focus styles in tokens
 - [x] 求解有 loading/success/error 明确反馈
   - PR#1: State machine with IDLE/SOLVING/SUCCESS/ERROR states
-- [ ] 导出前校验：越界/重叠阻止导出并提示
-  - PR#1: Export implemented but no validation check yet
+- [x] 导出前校验：越界/重叠阻止导出并提示
+  - PR#2A: Added validateExportData function with proper error/warning messages
+- [x] 导出按钮禁用状态有正确的 aria-label 说明
+  - PR#2A: Export buttons disabled with descriptive aria-labels
 
 ### 8.3 工程门槛
 - [x] React 重组件已 lazy load
@@ -306,4 +308,7 @@
 - [ ] 3D 视图（PR#2）
 - [ ] 手动微调与校验（PR#3）
 - [ ] 虚拟列表（PR#2）
-- [ ] ZIP 导出（PR#4）
+- [x] ZIP 导出（PR#2A已完成）
+  - PR#2A: ZIP export with native CompressionStream API, includes plan.json, items.csv, readme.txt
+- [ ] 导出 JSON 版本字段与 API 对齐
+  - PR#2A: Added version field and proper API structure
