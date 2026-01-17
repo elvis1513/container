@@ -129,8 +129,8 @@
 推荐脚本（以仓库实际路径为准；若缺失则创建占位并在 ADR 记录来源）：
 
 ```bash
-python3 .shared/ui-ux-pro-max/scripts/search.py "<keyword>" --domain <domain> [-n <max_results>]
-python3 .shared/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react [-n <max_results>]
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<keyword>" --domain <domain> [-n <max_results>]
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react [-n <max_results>]
 ```
 
 要求：
