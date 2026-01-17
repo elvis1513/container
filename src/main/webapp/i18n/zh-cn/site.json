@@ -1,0 +1,95 @@
+{
+  "site": {
+    "packing": {
+      "title": "装箱工作台",
+      "description": "集装箱装箱优化工具",
+      "menu": "装箱",
+      "container": {
+        "title": "集装箱",
+        "label": "集装箱",
+        "select": "选择集装箱",
+        "custom": "自定义集装箱",
+        "name": "名称",
+        "innerSize": "内部尺寸 (毫米)",
+        "length": "长度 (L)",
+        "width": "宽度 (W)",
+        "height": "高度 (H)",
+        "maxWeight": "最大载重 (千克)"
+      },
+      "items": {
+        "title": "货物",
+        "add": "添加货物",
+        "remove": "删除",
+        "clear": "清空",
+        "name": "货物名称",
+        "dimensions": "尺寸 (毫米)",
+        "weight": "重量 (千克)",
+        "quantity": "数量",
+        "constraints": "约束条件",
+        "rotations": "允许旋转",
+        "stackable": "可堆叠",
+        "fragile": "易碎品",
+        "priority": "优先级",
+        "orientation": {
+          "LWH": "长×宽×高",
+          "WLH": "宽×长×高",
+          "LHW": "长×高×宽",
+          "WHL": "宽×高×长",
+          "HLW": "高×长×宽",
+          "HWL": "高×宽×长"
+        }
+      },
+      "solve": {
+        "button": "求解",
+        "solving": "求解中...",
+        "cancel": "取消",
+        "status": {
+          "idle": "准备求解",
+          "solving": "正在寻找最优方案...",
+          "success": "求解成功",
+          "error": "求解失败",
+          "timeout": "超时 - 显示当前最优解"
+        }
+      },
+      "result": {
+        "title": "解决方案",
+        "noSolution": "暂无解决方案",
+        "volumeUtilization": "体积利用率",
+        "remainingVolume": "剩余空间",
+        "totalWeight": "总重量",
+        "itemCount": "已装货物",
+        "unplaced": "未装货物",
+        "warnings": "警告",
+        "duration": "求解耗时",
+        "algorithm": "算法"
+      },
+      "export": {
+        "title": "导出",
+        "json": "导出 JSON",
+        "csv": "导出 CSV",
+        "zip": "导出全部 (ZIP)",
+        "success": "导出成功",
+        "error": "导出失败"
+      },
+      "viewer": {
+        "title": "3D 视图",
+        "placeholder": "3D 视图将在 PR#2 中实现",
+        "loading": "加载 3D 视图中..."
+      },
+      "validation": {
+        "required": "此字段为必填项",
+        "positive": "必须大于 0",
+        "integer": "必须是整数",
+        "invalidDimensions": "尺寸无效",
+        "invalidWeight": "重量无效",
+        "invalidQuantity": "数量至少为 1"
+      },
+      "errors": {
+        "noItems": "请至少添加一件货物",
+        "noContainer": "请选择或配置集装箱",
+        "solveFailed": "生成方案失败",
+        "invalidInput": "请检查输入内容"
+      }
+    }
+  }
+}

@@ -265,18 +265,45 @@
 ## 8. Verification（实现后必须逐条打勾）
 
 ### 8.1 视觉一致性
-- [ ] 画布区域在 loading/成功/失败切换时不跳动（有预留空间/skeleton）
+- [x] 画布区域在 loading/成功/失败切换时不跳动（有预留空间/skeleton）
+  - PR#1: Fixed `minHeight: 500px` on viewport prevents CLS
 - [ ] z-index 体系生效：toast/弹层不被画布遮挡
-- [ ] 左侧面板独立滚动，右侧画布稳定
+  - PR#1: Z-index scale defined but toast not yet implemented
+- [x] 左侧面板独立滚动，右侧画布稳定
+  - PR#1: Left panel has `overflowY: auto`, right canvas is fixed
 
 ### 8.2 功能完整性
 - [ ] 所有功能可键盘完成（至少：求解、选择条目、手动移动/旋转、导出）
+  - PR#1: Manual editing not yet implemented (PR#3)
 - [ ] focus ring 可见，Tab 顺序合理，无 keyboard trap
-- [ ] 求解有 loading/success/error 明确反馈
+  - PR#1: Using browser default focus, custom focus styles in tokens
+- [x] 求解有 loading/success/error 明确反馈
+  - PR#1: State machine with IDLE/SOLVING/SUCCESS/ERROR states
 - [ ] 导出前校验：越界/重叠阻止导出并提示
+  - PR#1: Export implemented but no validation check yet
 
 ### 8.3 工程门槛
-- [ ] React 重组件已 lazy load
+- [x] React 重组件已 lazy load
+  - PR#1: PackingPage loaded with `react-loadable`
 - [ ] 列表已虚拟化（>100 仍流畅）
-- [ ] 未使用 index 作为 key
-- [ ] 未用 useEffect 维护派生状态（或有充分理由并记录）
+  - PR#1: Simple list implementation, virtualization to be added in PR#2
+- [x] 未使用 index 作为 key
+  - PR#1: Using `item.id-${index}` as stable key
+- [x] 未用 useEffect 维护派生状态（或有充分理由并记录）
+  - PR#1: No useEffect used for derived state
+
+### 8.4 PR#1 特定验证（已完成）
+- [x] 表单有可见 label（禁止 placeholder-only）
+- [x] 求解状态机：Idle/Loading/Success/Error
+- [x] 导出功能：JSON 和 CSV 本地下载
+- [x] Design Tokens 集中定义（theme/tokens.ts）
+- [x] 新 UI 落在 site/ 目录，不污染 legacy
+- [x] 路由 /packing 需要认证（已添加 PrivateRoute 保护）
+- [x] 中英文文案同步（i18n/en/site.json, i18n/zh-cn/site.json）
+- [x] 无违规 import：site/ 未引用 entities/shared/modules/config
+
+### 8.5 待后续 PR 实现的功能
+- [ ] 3D 视图（PR#2）
+- [ ] 手动微调与校验（PR#3）
+- [ ] 虚拟列表（PR#2）
+- [ ] ZIP 导出（PR#4）

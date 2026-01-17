@@ -1,0 +1,95 @@
+{
+  "site": {
+    "packing": {
+      "title": "Packing Workbench",
+      "description": "Container loading optimization tool",
+      "menu": "Packing",
+      "container": {
+        "title": "Container",
+        "label": "Container",
+        "select": "Select Container",
+        "custom": "Custom Container",
+        "name": "Name",
+        "innerSize": "Inner Dimensions (mm)",
+        "length": "Length (L)",
+        "width": "Width (W)",
+        "height": "Height (H)",
+        "maxWeight": "Max Load (kg)"
+      },
+      "items": {
+        "title": "Items",
+        "add": "Add Item",
+        "remove": "Remove",
+        "clear": "Clear All",
+        "name": "Item Name",
+        "dimensions": "Dimensions (mm)",
+        "weight": "Weight (kg)",
+        "quantity": "Quantity",
+        "constraints": "Constraints",
+        "rotations": "Allowed Rotations",
+        "stackable": "Stackable",
+        "fragile": "Fragile",
+        "priority": "Priority",
+        "orientation": {
+          "LWH": "L×W×H",
+          "WLH": "W×L×H",
+          "LHW": "L×H×W",
+          "WHL": "W×H×L",
+          "HLW": "H×L×W",
+          "HWL": "H×W×L"
+        }
+      },
+      "solve": {
+        "button": "Solve",
+        "solving": "Solving...",
+        "cancel": "Cancel",
+        "status": {
+          "idle": "Ready to solve",
+          "solving": "Finding optimal arrangement...",
+          "success": "Solution found",
+          "error": "Solving failed",
+          "timeout": "Timeout - showing best effort solution"
+        }
+      },
+      "result": {
+        "title": "Solution",
+        "noSolution": "No solution available",
+        "volumeUtilization": "Volume Utilization",
+        "remainingVolume": "Remaining Space",
+        "totalWeight": "Total Weight",
+        "itemCount": "Items Placed",
+        "unplaced": "Unplaced Items",
+        "warnings": "Warnings",
+        "duration": "Solve Time",
+        "algorithm": "Algorithm"
+      },
+      "export": {
+        "title": "Export",
+        "json": "Export JSON",
+        "csv": "Export CSV",
+        "zip": "Export All (ZIP)",
+        "success": "Exported successfully",
+        "error": "Export failed"
+      },
+      "viewer": {
+        "title": "3D View",
+        "placeholder": "3D viewer will be implemented in PR#2",
+        "loading": "Loading 3D viewer..."
+      },
+      "validation": {
+        "required": "This field is required",
+        "positive": "Must be greater than 0",
+        "integer": "Must be a whole number",
+        "invalidDimensions": "Invalid dimensions",
+        "invalidWeight": "Invalid weight",
+        "invalidQuantity": "Quantity must be at least 1"
+      },
+      "errors": {
+        "noItems": "Please add at least one item",
+        "noContainer": "Please select or configure a container",
+        "solveFailed": "Failed to generate solution",
+        "invalidInput": "Please check your input"
+      }
+    }
+  }
+}
