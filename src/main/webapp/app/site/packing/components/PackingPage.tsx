@@ -5,14 +5,16 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Translate, LanguageSwitcher } from 'app/platform/i18n';
+import { Translate, LanguageSwitcher, useTranslation } from 'app/platform/i18n';
 import { COLORS, SPACING, TYPOGRAPHY } from '../../theme/tokens';
-import { STANDARD_CONTAINERS, solvePacking, exportPacking } from '../api';
+import { STANDARD_CONTAINERS, solvePacking, exportPacking, ApiErrorException, type ApiError } from '../api';
 import type { Container, Item, SolveState, SolveRequest } from '../types';
 import { LeftPanel } from './LeftPanel';
 import { RightCanvas } from './RightCanvas';
 
 export const PackingPage: React.FC = () => {
+  const { t } = useTranslation();
+
   // State
   const [containers, setContainers] = useState<Container[]>([STANDARD_CONTAINERS[0]]);
   const [items, setItems] = useState<Item[]>([]);
@@ -23,9 +25,60 @@ export const PackingPage: React.FC = () => {
     startTime: null,
     duration: null,
   });
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Keep track of the request for export
   const lastRequestRef = useRef<SolveRequest | null>(null);
+
+  /**
+   * Map API error to user-friendly i18n key (PR#2B)
+   */
+  const getErrorMessage = (error: Error): string => {
+    if (error instanceof ApiErrorException) {
+      // For validation errors, prefer field-level errors
+      if (error.message === 'error.validation' && error.fieldErrors && error.fieldErrors.length > 0) {
+        const firstError = error.fieldErrors[0];
+        // Map specific field errors to i18n keys
+        if (firstError.field.includes('containers')) {
+          if (firstError.field.includes('innerSize')) {
+            return 'site.packing.api.validation.containerDimensions';
+          }
+          if (firstError.field.includes('maxWeight')) {
+            return 'site.packing.api.validation.containerWeight';
+          }
+          if (firstError.field.includes('.id')) {
+            return 'site.packing.api.validation.duplicateContainerId';
+          }
+        }
+        if (firstError.field.includes('items')) {
+          if (firstError.field.includes('size')) {
+            return 'site.packing.api.validation.itemDimensions';
+          }
+          if (firstError.field.includes('weight')) {
+            return 'site.packing.api.validation.itemWeight';
+          }
+          if (firstError.field.includes('quantity')) {
+            return 'site.packing.api.validation.itemQuantity';
+          }
+          if (firstError.field.includes('.id')) {
+            return 'site.packing.api.validation.duplicateItemId';
+          }
+        }
+        if (firstError.field.includes('options')) {
+          return 'site.packing.api.validation.invalidOptions';
+        }
+        return 'site.packing.api.validationError';
+      }
+
+      // For other error messages
+      if (error.message === 'error.validation') {
+        return 'site.packing.api.validationError';
+      }
+    }
+
+    // Default error message
+    return 'site.packing.api.unknownError';
+  };
 
   // Handle container change
   const handleContainerChange = useCallback((container: Container) => {
@@ -38,6 +91,7 @@ export const PackingPage: React.FC = () => {
       startTime: null,
       duration: null,
     });
+    setApiError(null);
   }, []);
 
   // Handle items change
@@ -51,10 +105,14 @@ export const PackingPage: React.FC = () => {
       startTime: null,
       duration: null,
     });
+    setApiError(null);
   }, []);
 
-  // Handle solve
+  // Handle solve (PR#2B: Enhanced error handling)
   const handleSolve = useCallback(async () => {
+    // Reset api error
+    setApiError(null);
+
     if (!containers.length || items.length === 0) {
       setSolveState({
         status: 'ERROR',
@@ -99,15 +157,18 @@ export const PackingPage: React.FC = () => {
         duration: Date.now() - startTime,
       });
     } catch (error) {
+      // Map error to user-friendly message (PR#2B)
+      const errorMessage = error instanceof Error ? getErrorMessage(error) : 'site.packing.api.unknownError';
+      setApiError(errorMessage);
       setSolveState({
         status: 'ERROR',
         solution: null,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: t(errorMessage),
         startTime,
         duration: Date.now() - startTime,
       });
     }
-  }, [containers, items]);
+  }, [containers, items, t]);
 
   // Handle export JSON
   const handleExportJson = useCallback(() => {

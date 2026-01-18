@@ -91,6 +91,24 @@
         "noContainer": "Please select or configure a container",
         "solveFailed": "Failed to generate solution",
         "invalidInput": "Please check your input"
+      },
+      "api": {
+        "validationError": "Validation failed: Please check your input",
+        "solverTimeout": "Solving timeout: Using best effort solution",
+        "solverError": "Solver error: Please try again later",
+        "networkError": "Network error: Please check your connection",
+        "unknownError": "An unexpected error occurred",
+        "validation": {
+          "containerDimensions": "Container dimensions must be between 1-60000mm",
+          "containerWeight": "Container max weight must be between 0.1-500000kg",
+          "duplicateContainerId": "Duplicate container ID detected",
+          "itemDimensions": "Item dimensions must be between 1-60000mm",
+          "itemWeight": "Item weight must be between 0.01-100000kg",
+          "itemQuantity": "Item quantity must be between 1-10000",
+          "duplicateItemId": "Duplicate item ID detected",
+          "invalidOptions": "Invalid solve options",
+          "itemTooLarge": "Item dimensions exceed container size"
+        }
       }
     }
   }

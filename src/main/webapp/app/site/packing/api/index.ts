@@ -2,6 +2,7 @@
  * Packing API Client
  * PR#1: Uses stub/mock implementation
  * PR#2A: Enhanced export functionality with JSON, CSV, and ZIP support
+ * PR#2B: Backend error handling with user-friendly error messages
  * Future: Will connect to actual backend endpoint
  */
 
@@ -19,6 +20,179 @@ import type {
   ValidationErrorType,
   SolveState,
 } from '../types';
+
+// Error code mapping
+export const ERROR_CODE_MESSAGES = {
+  VALIDATION_ERROR: 'site.packing.api.validationError',
+  SOLVER_TIMEOUT: 'site.packing.api.solverTimeout',
+  SOLVER_ERROR: 'site.packing.api.solverError',
+} as const;
+
+export interface ApiError {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  message: string;
+  params?: string;
+  fieldErrors?: Array<{ field: string; message: string }>;
+}
+
+export class ApiErrorException extends Error {
+  readonly status: number;
+  readonly title: string;
+  readonly detail: string;
+  readonly message: string;
+  readonly fieldErrors?: Array<{ field: string; message: string }>;
+
+  constructor(title: string, error: ApiError) {
+    super(error.detail || error.message || title);
+    this.name = 'ApiErrorException';
+    this.status = error.status;
+    this.title = error.title;
+    this.detail = error.detail;
+    this.message = error.message;
+    this.fieldErrors = error.fieldErrors;
+  }
+}
+
+/**
+ * Validate solve request before sending to API (PR#2B)
+ */
+const validateSolveRequest = (request: SolveRequest): ApiError | null => {
+  const fieldErrors: Array<{ field: string; message: string }> = [];
+
+  // Check containers
+  if (!request.containers || request.containers.length === 0) {
+    fieldErrors.push({ field: 'containers', message: 'At least one container is required' });
+  } else {
+    request.containers.forEach((container, index) => {
+      const prefix = `containers[${index}]`;
+
+      // Check ID uniqueness
+      const duplicateIndex = request.containers.findIndex((c, i) => i > index && c.id === container.id);
+      if (duplicateIndex !== -1) {
+        fieldErrors.push({ field: `${prefix}.id`, message: `Duplicate container ID: ${container.id}` });
+      }
+
+      // Check dimensions
+      if (!container.innerSize) {
+        fieldErrors.push({ field: `${prefix}.innerSize`, message: 'Inner size is required' });
+      } else {
+        if (container.innerSize.l <= 0 || container.innerSize.l > 60000) {
+          fieldErrors.push({ field: `${prefix}.innerSize.l`, message: 'Length must be 1-60000mm' });
+        }
+        if (container.innerSize.w <= 0 || container.innerSize.w > 60000) {
+          fieldErrors.push({ field: `${prefix}.innerSize.w`, message: 'Width must be 1-60000mm' });
+        }
+        if (container.innerSize.h <= 0 || container.innerSize.h > 60000) {
+          fieldErrors.push({ field: `${prefix}.innerSize.h`, message: 'Height must be 1-60000mm' });
+        }
+      }
+
+      // Check max weight
+      if (container.maxWeight < 0.1 || container.maxWeight > 500000) {
+        fieldErrors.push({ field: `${prefix}.maxWeight`, message: 'Max weight must be 0.1-500000kg' });
+      }
+    });
+  }
+
+  // Check items
+  if (!request.items || request.items.length === 0) {
+    fieldErrors.push({ field: 'items', message: 'At least one item is required' });
+  } else {
+    const maxContainerL = Math.max(...(request.containers?.map(c => c.innerSize.l) || [0]));
+
+    request.items.forEach((item, index) => {
+      const prefix = `items[${index}]`;
+
+      // Check ID uniqueness
+      const duplicateIndex = request.items.findIndex((i, iIndex) => iIndex > index && i.id === item.id);
+      if (duplicateIndex !== -1) {
+        fieldErrors.push({ field: `${prefix}.id`, message: `Duplicate item ID: ${item.id}` });
+      }
+
+      // Check size
+      if (!item.size) {
+        fieldErrors.push({ field: `${prefix}.size`, message: 'Size is required' });
+      } else {
+        if (item.size.l <= 0 || item.size.l > 60000) {
+          fieldErrors.push({ field: `${prefix}.size.l`, message: 'Length must be 1-60000mm' });
+        } else if (item.size.l > maxContainerL) {
+          fieldErrors.push({
+            field: `${prefix}.size.l`,
+            message: `Item length ${item.size.l}mm exceeds container max ${maxContainerL}mm`,
+          });
+        }
+        if (item.size.w <= 0 || item.size.w > 60000) {
+          fieldErrors.push({ field: `${prefix}.size.w`, message: 'Width must be 1-60000mm' });
+        }
+        if (item.size.h <= 0 || item.size.h > 60000) {
+          fieldErrors.push({ field: `${prefix}.size.h`, message: 'Height must be 1-60000mm' });
+        }
+      }
+
+      // Check weight
+      if (item.weight < 0.01 || item.weight > 100000) {
+        fieldErrors.push({ field: `${prefix}.weight`, message: 'Weight must be 0.01-100000kg' });
+      }
+
+      // Check quantity
+      if (item.quantity < 1 || item.quantity > 10000) {
+        fieldErrors.push({ field: `${prefix}.quantity`, message: 'Quantity must be 1-10000' });
+      }
+
+      // Check constraints rotations
+      if (item.constraints?.rotations && item.constraints.rotations.length === 0) {
+        fieldErrors.push({
+          field: `${prefix}.constraints.rotations`,
+          message: 'At least one rotation must be allowed',
+        });
+      }
+    });
+  }
+
+  // Check options
+  if (request.options) {
+    if (request.options.objective) {
+      if (request.options.objective !== 'MAX_VOLUME_UTILIZATION' && request.options.objective !== 'MAX_ITEM_COUNT') {
+        fieldErrors.push({
+          field: 'options.objective',
+          message: 'Must be MAX_VOLUME_UTILIZATION or MAX_ITEM_COUNT',
+        });
+      }
+    }
+    if (request.options.seed !== undefined && request.options.seed < 0) {
+      fieldErrors.push({ field: 'options.seed', message: 'Seed must be non-negative' });
+    }
+    if (request.options.maxDurationMs !== undefined) {
+      if (request.options.maxDurationMs < 100) {
+        fieldErrors.push({ field: 'options.maxDurationMs', message: 'Minimum duration is 100ms' });
+      }
+      if (request.options.maxDurationMs > 300000) {
+        fieldErrors.push({
+          field: 'options.maxDurationMs',
+          message: 'Maximum duration is 300000ms (5 minutes)',
+        });
+      }
+    }
+  }
+
+  // Return error if any validation failed
+  if (fieldErrors.length > 0) {
+    return {
+      type: 'about:blank',
+      title: 'Validation failed',
+      status: 400,
+      detail: `Invalid input: ${fieldErrors[0].message}`,
+      message: 'error.validation',
+      params: 'packing',
+      fieldErrors,
+    };
+  }
+
+  return null;
+};
 
 // Standard containers library
 export const STANDARD_CONTAINERS: Container[] = [
@@ -43,12 +217,18 @@ export const STANDARD_CONTAINERS: Container[] = [
 ];
 
 /**
- * Stub solve function for PR#1
+ * Enhanced solve function with error handling (PR#2B)
  * Generates a simple arrangement that satisfies basic constraints
  *
- * TODO: Replace with actual API call in PR#2+
+ * TODO: Replace with actual API call to /api/packing/solve
  */
 export const solvePacking = async (request: SolveRequest): Promise<PackingSolution> => {
+  // Validate request before solving
+  const validationError = validateSolveRequest(request);
+  if (validationError) {
+    throw new ApiErrorException('Validation Error', validationError);
+  }
+
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400));
 

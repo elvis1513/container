@@ -91,6 +91,24 @@
         "noContainer": "请选择或配置集装箱",
         "solveFailed": "生成方案失败",
         "invalidInput": "请检查输入内容"
+      },
+      "api": {
+        "validationError": "校验失败：请检查输入内容",
+        "solverTimeout": "求解超时：使用当前最优解",
+        "solverError": "求解器错误：请稍后重试",
+        "networkError": "网络错误：请检查网络连接",
+        "unknownError": "发生未知错误",
+        "validation": {
+          "containerDimensions": "集装箱尺寸必须在 1-60000 毫米之间",
+          "containerWeight": "集装箱最大载重必须在 0.1-500000 千克之间",
+          "duplicateContainerId": "检测到重复的集装箱 ID",
+          "itemDimensions": "货物尺寸必须在 1-60000 毫米之间",
+          "itemWeight": "货物重量必须在 0.01-100000 千克之间",
+          "itemQuantity": "货物数量必须在 1-10000 之间",
+          "duplicateItemId": "检测到重复的货物 ID",
+          "invalidOptions": "无效的求解选项",
+          "itemTooLarge": "货物尺寸超过集装箱尺寸"
+        }
       }
     }
   }
