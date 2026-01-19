@@ -8,19 +8,35 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Translate } from 'app/platform/i18n';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOW, TRANSITION, Z_INDEX } from '../../theme/tokens';
 import { STANDARD_CONTAINERS, validateExportData, supportsCompressionStream } from '../api';
+import { RotationCubeIcon } from './RotationCubeIcon';
 import type { Container, Item, ItemFormData, ContainerFormData, SolveState, PackingSolution } from '../types';
 
 interface LeftPanelProps {
   containers: Container[];
   items: Item[];
   solveState: SolveState;
+  selectedItemId?: string;
   onContainerChange: (container: Container) => void;
   onItemsChange: (items: Item[]) => void;
   onSolve: () => void;
+  onSelectionChange?: (itemId: string) => void;
   onExportJson: () => void;
   onExportCsv: () => void;
   onExportZip: () => void;
 }
+
+// Helper: Get descriptive rotation label
+const getRotationLabel = (rotation: string): string => {
+  const labels: Record<string, string> = {
+    LWH: '正放',
+    WLH: '立放',
+    LHW: '侧放',
+    WHL: '正放旋转',
+    HLW: '立放旋转',
+    HWL: '侧放旋转',
+  };
+  return labels[rotation] || rotation;
+};
 
 // Helper: Generate aria-label for disabled export buttons
 const getExportButtonLabelHelper = (solveState: SolveState, format: string): string => {
@@ -195,9 +211,11 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
   containers,
   items,
   solveState,
+  selectedItemId,
   onContainerChange,
   onItemsChange,
   onSolve,
+  onSelectionChange,
   onExportJson,
   onExportCsv,
   onExportZip,
@@ -641,9 +659,16 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
             <label style={styles.label}>
               <Translate contentKey="site.packing.items.rotations">Allowed Rotations</Translate>:
             </label>
-            <div style={styles.rotations}>
+            <div style={styles.rotationsGrid}>
               {(['LWH', 'WLH', 'LHW', 'WHL', 'HLW', 'HWL'] as const).map(rotation => (
-                <label key={rotation} style={styles.checkboxLabel}>
+                <label
+                  key={rotation}
+                  style={{
+                    ...styles.rotationItem,
+                    ...(itemForm.rotations.includes(rotation) ? styles.rotationItemSelected : {}),
+                  }}
+                >
+                  <RotationCubeIcon orientation={rotation} size={60} />
                   <input
                     id={`rotation-${rotation}`}
                     name={`rotation-${rotation}`}
@@ -651,8 +676,9 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
                     checked={itemForm.rotations.includes(rotation)}
                     onChange={() => toggleRotation(rotation)}
                     disabled={isSolving}
+                    style={{ display: 'none' }}
                   />
-                  <Translate contentKey={`site.packing.items.orientation.${rotation}`}>{rotation}</Translate>
+                  <span style={styles.rotationLabel}>{getRotationLabel(rotation)}</span>
                 </label>
               ))}
             </div>
@@ -700,7 +726,15 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
               </button>
             </div>
             {items.map((item, index) => (
-              <div key={`${item.id}-${index}`} style={styles.itemRow}>
+              <div
+                key={`${item.id}-${index}`}
+                style={{
+                  ...styles.itemRow,
+                  ...(selectedItemId === item.id ? styles.itemRowSelected : {}),
+                  ...(onSelectionChange ? styles.itemRowClickable : {}),
+                }}
+                onClick={() => onSelectionChange?.(item.id)}
+              >
                 <span style={styles.itemName}>
                   {item.name} ×{item.quantity}
                   <span style={styles.itemDims}>
@@ -710,7 +744,10 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
                 <button
                   type="button"
                   style={styles.iconButton}
-                  onClick={() => removeItem(index)}
+                  onClick={e => {
+                    e.stopPropagation();
+                    removeItem(index);
+                  }}
                   disabled={isSolving}
                   aria-label={`Remove ${item.name}`}
                 >
@@ -773,7 +810,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRight: `1px solid ${COLORS.border.default}`,
     display: 'flex',
     flexDirection: 'column' as const,
-    overflow: 'hidden',
+    overflowY: 'auto',
   },
   section: {
     padding: SPACING.lg,
@@ -805,6 +842,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: COLORS.bg.default,
     color: COLORS.text.default,
     transition: `border-color ${TRANSITION.fast}`,
+    boxSizing: 'border-box',
   },
   inputError: {
     width: '100%',
@@ -815,6 +853,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.bg.surface,
     color: COLORS.text.default,
+    boxSizing: 'border-box',
   },
   select: {
     width: '100%',
@@ -826,6 +865,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: COLORS.bg.default,
     color: COLORS.text.default,
     cursor: 'pointer',
+    boxSizing: 'border-box',
   },
   selectError: {
     width: '100%',
@@ -837,6 +877,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: COLORS.bg.surface,
     color: COLORS.text.default,
     cursor: 'pointer',
+    boxSizing: 'border-box',
   },
   errorText: {
     display: 'block',
@@ -885,10 +926,31 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: RADIUS.md,
     marginBottom: SPACING.md,
   },
-  rotations: {
+  rotationsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: SPACING.lg,
+  },
+  rotationItem: {
     display: 'flex',
-    flexWrap: 'wrap' as const,
+    flexDirection: 'column' as const,
+    alignItems: 'center',
     gap: SPACING.sm,
+    padding: `${SPACING.sm}px ${SPACING.md}px`,
+    border: `1px solid ${COLORS.border.default}`,
+    borderRadius: RADIUS.md,
+    cursor: 'pointer',
+    transition: `all ${TRANSITION.fast}`,
+  },
+  rotationItemSelected: {
+    borderColor: COLORS.brand.primary,
+    backgroundColor: COLORS.selection.hover,
+    boxShadow: `0 0 0 2px ${COLORS.brand.primaryLight}`,
+  },
+  rotationLabel: {
+    fontSize: TYPOGRAPHY.fontSize.small,
+    fontWeight: TYPOGRAPHY.fontWeights.medium,
+    color: COLORS.text.default,
   },
   checkboxLabel: {
     display: 'inline-flex',
@@ -976,6 +1038,14 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     padding: `${SPACING.sm}px ${SPACING.md}`,
     borderBottom: `1px solid ${COLORS.border.default}`,
+  },
+  itemRowClickable: {
+    cursor: 'pointer',
+    transition: `background-color ${TRANSITION.fast}`,
+  },
+  itemRowSelected: {
+    backgroundColor: COLORS.selection.hover,
+    borderLeft: `3px solid ${COLORS.selection.default}`,
   },
   itemName: {
     fontSize: TYPOGRAPHY.fontSize.body,

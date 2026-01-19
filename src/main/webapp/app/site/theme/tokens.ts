@@ -67,6 +67,13 @@ export const COLORS = {
     default: '#3B82F6',
     hover: '#60A5FA',
   },
+
+  // Rotation Icon Colors (L=Length, W=Width, H=Height)
+  rotation: {
+    length: '#E74C3C', // 红色 - L
+    width: '#3498DB', // 蓝色 - W
+    height: '#F1C40F', // 黄色 - H
+  },
 } as const;
 
 // Typography Scale (Inter font)
