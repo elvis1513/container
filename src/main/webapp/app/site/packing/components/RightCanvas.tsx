@@ -1,23 +1,30 @@
 /**
  * RightCanvas Component
- * Placeholder for 3D viewer (to be implemented in PR#2)
- * PR#1: Fixed size placeholder with loading states, prevents CLS
+ * 3D viewer for packing solutions
+ * PR#4A: Integrated ThreeViewer component
  */
 
 import React from 'react';
 import { Translate } from 'app/platform/i18n';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, LAYOUT } from '../../theme/tokens';
 import type { PackingSolution } from '../types';
+import type { Item } from '../types';
+import { ThreeViewer } from './ThreeViewer';
 
 interface RightCanvasProps {
   solveState: {
     status: 'IDLE' | 'SOLVING' | 'SUCCESS' | 'ERROR';
     solution: PackingSolution | null;
   };
+  containers: Array<{ innerSize: { l: number; w: number; h: number } }> | null;
+  items: Item[] | null;
+  selectedItemId?: string;
+  onSelectionChange?: (itemId: string) => void;
 }
 
-export const RightCanvas: React.FC<RightCanvasProps> = ({ solveState }) => {
+export const RightCanvas: React.FC<RightCanvasProps> = ({ solveState, containers, items, selectedItemId = '', onSelectionChange }) => {
   const hasSolution = solveState.status === 'SUCCESS' && solveState.solution;
+  const container = containers && containers.length > 0 ? containers[0] : null;
 
   return (
     <div style={styles.canvas}>
@@ -39,34 +46,27 @@ export const RightCanvas: React.FC<RightCanvasProps> = ({ solveState }) => {
           </div>
         )}
 
+        {hasSolution && (
+          <ThreeViewer
+            solution={solveState.solution}
+            container={container}
+            items={items || []}
+            selectedItemId={selectedItemId}
+            onSelectionChange={onSelectionChange || (() => {})}
+          />
+        )}
+
         {!hasSolution && solveState.status !== 'SOLVING' && (
           <div style={styles.placeholder}>
             <div style={styles.placeholderIcon}>📦</div>
             <p style={styles.placeholderText}>
-              <Translate contentKey="site.packing.viewer.placeholder">3D viewer will be implemented in PR#2</Translate>
+              <Translate contentKey="site.packing.viewer.placeholder">3D viewer</Translate>
             </p>
             <p style={styles.placeholderHint}>
-              <Translate contentKey="site.packing.solve.status.idle">Add items and click Solve to generate a packing solution</Translate>
+              <Translate contentKey="site.packing.solve.status.idle">Add items and click Solve to see 3D visualization</Translate>
             </p>
           </div>
         )}
-
-        {hasSolution && (
-          <div style={styles.solutionPlaceholder}>
-            <div style={styles.placeholderIcon}>✅</div>
-            <p style={styles.placeholderText}>
-              <Translate contentKey="site.packing.result.title">Solution</Translate>
-            </p>
-            <p style={styles.placeholderHint}>3D visualization coming in PR#2</p>
-          </div>
-        )}
-      </div>
-
-      {/* Canvas Footer - Controls placeholder */}
-      <div style={styles.footer}>
-        <div style={styles.controlsPlaceholder}>
-          <span style={styles.controlHint}>Camera controls • Grid • Axes</span>
-        </div>
       </div>
     </div>
   );

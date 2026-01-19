@@ -12,8 +12,15 @@ services:
       - JHIPSTER_CACHE_REDIS_SERVER=redis://redis:6379
       - JHIPSTER_CACHE_REDIS_CLUSTER=false
       - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
+      - SERVER_SSL_ENABLED=true
+      - SERVER_SSL_KEY_STORE=classpath:/config/tls/keystore.p12
+      - SERVER_SSL_KEY_STORE_PASSWORD=password
+      - SERVER_SSL_KEY_ALIAS=tomcat
     ports:
       - 127.0.0.1:8080:8080
+      - 127.0.0.1:8443:8443
+    volumes:
+      - ./ssl:/etc/ssl/certs:ro
     healthcheck:
       test:
         - CMD

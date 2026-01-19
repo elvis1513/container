@@ -26,6 +26,7 @@ export const PackingPage: React.FC = () => {
     duration: null,
   });
   const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string>('');
 
   // Keep track of the request for export
   const lastRequestRef = useRef<SolveRequest | null>(null);
@@ -191,6 +192,11 @@ export const PackingPage: React.FC = () => {
     exportPacking.zip(lastRequestRef.current, solveState.solution, items, containers[0]);
   }, [solveState, items, containers]);
 
+  // Handle item selection change (for 3D viewer sync)
+  const handleSelectionChange = useCallback((itemId: string) => {
+    setSelectedItemId(itemId);
+  }, []);
+
   return (
     <div style={styles.page}>
       {/* Page Header */}
@@ -212,14 +218,22 @@ export const PackingPage: React.FC = () => {
           containers={containers}
           items={items}
           solveState={solveState}
+          selectedItemId={selectedItemId}
           onContainerChange={handleContainerChange}
           onItemsChange={handleItemsChange}
           onSolve={handleSolve}
+          onSelectionChange={handleSelectionChange}
           onExportJson={handleExportJson}
           onExportCsv={handleExportCsv}
           onExportZip={handleExportZip}
         />
-        <RightCanvas solveState={solveState} />
+        <RightCanvas
+          solveState={solveState}
+          containers={containers}
+          items={items}
+          selectedItemId={selectedItemId}
+          onSelectionChange={handleSelectionChange}
+        />
       </main>
     </div>
   );

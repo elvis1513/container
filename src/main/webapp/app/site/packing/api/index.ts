@@ -6,6 +6,8 @@
  * Future: Will connect to actual backend endpoint
  */
 
+/* eslint-disable no-bitwise */
+
 import type {
   SolveRequest,
   PackingSolution,
@@ -623,12 +625,9 @@ export const exportPacking = {
    * Falls back to separate downloads if not supported
    */
   zip(request: SolveRequest, solution: PackingSolution, items: Item[], container: Container): void {
-    if (!supportsCompressionStream()) {
-      // Fallback: download JSON and CSV separately
-      this.json(request, solution);
-      this.csv(items, solution.placements, container, solution);
-      return;
-    }
+    // Note: Proper ZIP files require central directory structure
+    // For simplicity, we'll use a reliable implementation approach
+    // If CompressionStream is supported, we still need proper ZIP format
 
     try {
       // Generate JSON content
@@ -681,52 +680,140 @@ export const exportPacking = {
       // Generate README content
       const readmeContent = generateReadme(solution, container.name);
 
-      // Helper to create a ZIP file entry
-      const createZipEntry = (name: string, content: string): Uint8Array => {
-        const nameBytes = new TextEncoder().encode(name);
-        const contentBytes = new TextEncoder().encode(content);
-
-        // Simple ZIP file entry format (local file header + data + descriptor)
-        // This is a minimal implementation - for production use a library like JSZip is recommended
-        const header = new Uint8Array(30 + nameBytes.length);
-        const view = new DataView(header.buffer);
-
-        view.setUint32(0, 0x04034b50, true); // Local file header signature
-        view.setUint16(4, 0x000a, true); // Version needed
-        view.setUint16(6, 0, true); // Flags
-        view.setUint16(8, 0, true); // Compression method (0 = store)
-        view.setUint16(10, 0, true); // Last mod time
-        view.setUint16(12, 0, true); // Last mod date
-        view.setUint32(14, 0, true); // CRC-32
-        view.setUint32(18, contentBytes.length, true); // Compressed size
-        view.setUint32(22, contentBytes.length, true); // Uncompressed size
-        view.setUint16(26, nameBytes.length, true); // Name length
-        view.setUint16(28, 0, true); // Extra length
-
-        header.set(nameBytes, 30);
-
-        // Combine header + content
-        const entry = new Uint8Array(header.length + contentBytes.length);
-        entry.set(header);
-        entry.set(contentBytes, header.length);
-
-        return entry;
+      // Helper to calculate CRC-32
+      const crc32 = (str: string): number => {
+        let crc = 0 ^ -1;
+        for (let i = 0; i < str.length; i++) {
+          crc = (crc >>> 8) ^ crc32Table[(crc ^ str.charCodeAt(i)) & 0xff];
+        }
+        return (crc ^ -1) >>> 0;
       };
 
-      // Create ZIP entries
-      const jsonEntry = createZipEntry('plan.json', jsonContent);
-      const csvEntry = createZipEntry('items.csv', csvContent);
-      const readmeEntry = createZipEntry('readme.txt', readmeContent);
+      // CRC-32 table
+      const crc32Table = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let crc = i;
+        for (let j = 0; j < 8; j++) {
+          crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+        }
+        crc32Table[i] = crc;
+      }
 
-      // Combine all entries
-      const totalSize = jsonEntry.length + csvEntry.length + readmeEntry.length;
+      // Helper to write a 32-bit value
+      const writeUint32 = (view: DataView, offset: number, value: number): void => {
+        view.setUint32(offset, value, true);
+      };
+
+      // Helper to write a 16-bit value
+      const writeUint16 = (view: DataView, offset: number, value: number): void => {
+        view.setUint16(offset, value, true);
+      };
+
+      // Files to include in ZIP
+      const files = [
+        { name: 'plan.json', content: jsonContent },
+        { name: 'items.csv', content: csvContent },
+        { name: 'readme.txt', content: readmeContent },
+      ];
+
+      // Calculate total size
+      let totalSize = 0;
+      const fileEntries: Array<{ header: Uint8Array; data: Uint8Array; centralHeader: Uint8Array }> = [];
+
+      let localDataOffset = 0;
+      let centralDirOffset = 0;
+
+      for (const file of files) {
+        const nameBytes = new TextEncoder().encode(file.name);
+        const contentBytes = new TextEncoder().encode(file.content);
+        const crc = crc32(file.content);
+
+        // Local file header (30 bytes + filename length)
+        const localHeaderSize = 30 + nameBytes.length;
+        const localHeader = new Uint8Array(localHeaderSize);
+        const localView = new DataView(localHeader.buffer);
+
+        writeUint32(localView, 0, 0x04034b50); // Local file header signature
+        writeUint16(localView, 4, 0x000a); // Version needed
+        writeUint16(localView, 6, 0); // Flags
+        writeUint16(localView, 8, 0); // Compression method (0 = store)
+        writeUint16(localView, 10, 0); // Last mod time
+        writeUint16(localView, 12, 0); // Last mod date
+        writeUint32(localView, 14, crc); // CRC-32
+        writeUint32(localView, 18, contentBytes.length); // Compressed size
+        writeUint32(localView, 22, contentBytes.length); // Uncompressed size
+        writeUint16(localView, 26, nameBytes.length); // Name length
+        writeUint16(localView, 28, 0); // Extra length
+
+        localHeader.set(nameBytes, 30);
+
+        // Central directory file header (46 bytes + filename length)
+        const centralHeaderSize = 46 + nameBytes.length;
+        const centralHeader = new Uint8Array(centralHeaderSize);
+        const centralView = new DataView(centralHeader.buffer);
+
+        writeUint32(centralView, 0, 0x02014b50); // Central file header signature
+        writeUint16(centralView, 4, 0x000a); // Version made by
+        writeUint16(centralView, 6, 0x000a); // Version needed
+        writeUint16(centralView, 8, 0); // Flags
+        writeUint16(centralView, 10, 0); // Compression method
+        writeUint16(centralView, 12, 0); // Last mod time
+        writeUint16(centralView, 14, 0); // Last mod date
+        writeUint32(centralView, 16, crc); // CRC-32
+        writeUint32(centralView, 20, contentBytes.length); // Compressed size
+        writeUint32(centralView, 24, contentBytes.length); // Uncompressed size
+        writeUint16(centralView, 28, nameBytes.length); // Name length
+        writeUint16(centralView, 30, 0); // Extra length
+        writeUint16(centralView, 32, 0); // File comment length
+        writeUint16(centralView, 34, 0); // Disk number start
+        writeUint16(centralView, 36, 0); // Internal file attributes
+        writeUint32(centralView, 38, 0); // External file attributes
+        writeUint32(centralView, 42, localDataOffset); // Relative offset of local header
+
+        centralHeader.set(nameBytes, 46);
+
+        fileEntries.push({
+          header: localHeader,
+          data: contentBytes,
+          centralHeader,
+        });
+
+        localDataOffset += localHeaderSize + contentBytes.length;
+        centralDirOffset += centralHeaderSize;
+      }
+
+      // End of central directory record (22 bytes)
+      const endOfCentralDirSize = 22;
+      const endOfCentralDir = new Uint8Array(endOfCentralDirSize);
+      const endView = new DataView(endOfCentralDir.buffer);
+
+      writeUint32(endView, 0, 0x06054b50); // End of central dir signature
+      writeUint16(endView, 4, 0); // Disk number
+      writeUint16(endView, 6, 0); // Central dir disk number
+      writeUint16(endView, 8, files.length); // Disk entries
+      writeUint16(endView, 10, files.length); // Total entries
+      writeUint32(endView, 12, centralDirOffset); // Central dir size
+      writeUint32(endView, 16, localDataOffset); // Central dir offset
+      writeUint16(endView, 20, 0); // Comment length
+
+      // Combine all parts
+      totalSize = localDataOffset + centralDirOffset + endOfCentralDirSize;
       const zipData = new Uint8Array(totalSize);
       let offset = 0;
-      zipData.set(jsonEntry, offset);
-      offset += jsonEntry.length;
-      zipData.set(csvEntry, offset);
-      offset += csvEntry.length;
-      zipData.set(readmeEntry, offset);
+
+      for (const entry of fileEntries) {
+        zipData.set(entry.header, offset);
+        offset += entry.header.length;
+        zipData.set(entry.data, offset);
+        offset += entry.data.length;
+      }
+
+      for (const entry of fileEntries) {
+        zipData.set(entry.centralHeader, offset);
+        offset += entry.centralHeader.length;
+      }
+
+      zipData.set(endOfCentralDir, offset);
 
       const blob = new Blob([zipData], { type: 'application/zip' });
       triggerDownload(blob, `packing-export-${Date.now()}.zip`);
