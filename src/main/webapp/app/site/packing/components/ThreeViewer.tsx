@@ -35,6 +35,7 @@ import type { PackingSolution, Placement } from '../types';
 import { COLORS, SPACING, TYPOGRAPHY, LAYOUT } from '../../theme/tokens';
 import { ViewerToolbar } from './ViewerToolbar';
 import { HoverTooltip } from './HoverTooltip';
+import { getOrientedDimensions } from '../utils/orientation';
 
 /**
  * Instancing threshold: enable InstancedMesh when boxes > 200
@@ -161,33 +162,15 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = props => {
     const item = props.items.find(i => i.id === props.selectedItemId);
     if (!placement || !item) return;
 
-    // Calculate item bounding box
-    let length = item.size.l;
-    let width = item.size.w;
-    let height = item.size.h;
-
-    // Apply rotation
-    switch (placement.orientation) {
-      case 'WLH':
-        [length, width] = [width, length];
-        break;
-      case 'LHW':
-        [length, height] = [height, length];
-        break;
-      case 'WHL':
-        [width, height] = [height, width];
-        break;
-      default:
-        break;
-    }
+    const dims = getOrientedDimensions(item.size, placement.orientation);
 
     // Item center position
-    const centerX = placement.position.x + length / 2;
-    const centerY = placement.position.y + height / 2;
-    const centerZ = placement.position.z + width / 2;
+    const centerX = placement.position.x + dims.x / 2;
+    const centerY = placement.position.y + dims.y / 2;
+    const centerZ = placement.position.z + dims.z / 2;
 
     // Calculate distance based on item size
-    const maxItemDim = Math.max(length, height, width);
+    const maxItemDim = Math.max(dims.x, dims.y, dims.z);
     const distance = maxItemDim * 3;
 
     // Position camera
@@ -382,34 +365,16 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = props => {
       const item = props.items.find(i => i.id === placement.itemId);
       if (!item) return;
 
-      // Get dimensions and position
-      let length = item.size.l;
-      let width = item.size.w;
-      let height = item.size.h;
-
-      // Apply rotation
-      switch (placement.orientation) {
-        case 'WLH':
-          [length, width] = [width, length];
-          break;
-        case 'LHW':
-          [length, height] = [height, length];
-          break;
-        case 'WHL':
-          [width, height] = [height, width];
-          break;
-        default:
-          break;
-      }
+      const dims = getOrientedDimensions(item.size, placement.orientation);
 
       // Geometry and material
-      const geometry = new THREE.BoxGeometry(length, height, width);
+      const geometry = new THREE.BoxGeometry(dims.x, dims.y, dims.z);
       const isSelected = placement.itemId === props.selectedItemId;
       const material = createItemMaterial(placement.itemId, isSelected);
       const mesh = new THREE.Mesh(geometry, material);
 
       // Position (center the box on its position)
-      mesh.position.set(placement.position.x + length / 2, placement.position.y + height / 2, placement.position.z + width / 2);
+      mesh.position.set(placement.position.x + dims.x / 2, placement.position.y + dims.y / 2, placement.position.z + dims.z / 2);
 
       // Metadata for selection and hover
       mesh.userData = {
@@ -468,29 +433,11 @@ export const ThreeViewer: React.FC<ThreeViewerProps> = props => {
       const item = props.items.find(i => i.id === placement.itemId);
       if (!item) return;
 
-      // Get dimensions and position
-      let length = item.size.l;
-      let width = item.size.w;
-      let height = item.size.h;
-
-      // Apply rotation
-      switch (placement.orientation) {
-        case 'WLH':
-          [length, width] = [width, length];
-          break;
-        case 'LHW':
-          [length, height] = [height, length];
-          break;
-        case 'WHL':
-          [width, height] = [height, width];
-          break;
-        default:
-          break;
-      }
+      const dims = getOrientedDimensions(item.size, placement.orientation);
 
       // Scale and position
-      matrix.makeTranslation(placement.position.x + length / 2, placement.position.y + height / 2, placement.position.z + width / 2);
-      matrix.scale(new THREE.Vector3(length, height, width));
+      matrix.makeTranslation(placement.position.x + dims.x / 2, placement.position.y + dims.y / 2, placement.position.z + dims.z / 2);
+      matrix.scale(new THREE.Vector3(dims.x, dims.y, dims.z));
       instancedMesh.setMatrixAt(index, matrix);
 
       // Set color based on selection

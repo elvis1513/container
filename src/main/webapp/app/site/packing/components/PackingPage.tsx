@@ -4,11 +4,11 @@
  * PR#1: Left panel + right canvas, solve state machine, export functionality
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Translate, LanguageSwitcher, useTranslation } from 'app/platform/i18n';
-import { COLORS, SPACING, TYPOGRAPHY } from '../../theme/tokens';
-import { STANDARD_CONTAINERS, solvePacking, exportPacking, ApiErrorException, type ApiError } from '../api';
-import type { Container, Item, SolveState, SolveRequest } from '../types';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS, SHADOW, TRANSITION, Z_INDEX } from '../../theme/tokens';
+import { STANDARD_CONTAINERS, solvePacking, exportPacking, validatePacking, ApiErrorException } from '../api';
+import type { Container, Item, SolveState, SolveRequest, PackingSolution, Placement, Orientation, ValidateResponse } from '../types';
 import { LeftPanel } from './LeftPanel';
 import { RightCanvas } from './RightCanvas';
 
@@ -25,11 +25,20 @@ export const PackingPage: React.FC = () => {
     startTime: null,
     duration: null,
   });
-  const [apiError, setApiError] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string>('');
+  const [validationResult, setValidationResult] = useState<ValidateResponse | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [toast, setToast] = useState<{
+    type: 'success' | 'error';
+    contentKey: string;
+    values?: Record<string, string | number>;
+  } | null>(null);
 
   // Keep track of the request for export
   const lastRequestRef = useRef<SolveRequest | null>(null);
+  const originalSolutionRef = useRef<PackingSolution | null>(null);
+  const validationRequestRef = useRef(0);
+  const toastTimeoutRef = useRef<number | null>(null);
 
   /**
    * Map API error to user-friendly i18n key (PR#2B)
@@ -81,6 +90,42 @@ export const PackingPage: React.FC = () => {
     return 'site.packing.api.unknownError';
   };
 
+  const showToast = useCallback((type: 'success' | 'error', contentKey: string, values?: Record<string, string | number>) => {
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+    setToast({ type, contentKey, values });
+    toastTimeoutRef.current = window.setTimeout(() => setToast(null), 2400);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        window.clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const runValidation = useCallback(
+    async (placements: Placement[]) => {
+      if (!containers.length || !items.length) return;
+      const requestId = (validationRequestRef.current += 1);
+      setIsValidating(true);
+
+      try {
+        const result = await validatePacking({ containers, items, placements });
+        if (requestId === validationRequestRef.current) {
+          setValidationResult(result);
+        }
+      } finally {
+        if (requestId === validationRequestRef.current) {
+          setIsValidating(false);
+        }
+      }
+    },
+    [containers, items],
+  );
+
   // Handle container change
   const handleContainerChange = useCallback((container: Container) => {
     setContainers([container]);
@@ -92,7 +137,8 @@ export const PackingPage: React.FC = () => {
       startTime: null,
       duration: null,
     });
-    setApiError(null);
+    setValidationResult(null);
+    originalSolutionRef.current = null;
   }, []);
 
   // Handle items change
@@ -106,13 +152,14 @@ export const PackingPage: React.FC = () => {
       startTime: null,
       duration: null,
     });
-    setApiError(null);
+    setValidationResult(null);
+    originalSolutionRef.current = null;
   }, []);
 
   // Handle solve (PR#2B: Enhanced error handling)
   const handleSolve = useCallback(async () => {
-    // Reset api error
-    setApiError(null);
+    setValidationResult(null);
+    originalSolutionRef.current = null;
 
     if (!containers.length || items.length === 0) {
       setSolveState({
@@ -157,10 +204,14 @@ export const PackingPage: React.FC = () => {
         startTime,
         duration: Date.now() - startTime,
       });
+
+      if (solution.status !== 'ERROR') {
+        originalSolutionRef.current = solution;
+        runValidation(solution.placements);
+      }
     } catch (error) {
       // Map error to user-friendly message (PR#2B)
       const errorMessage = error instanceof Error ? getErrorMessage(error) : 'site.packing.api.unknownError';
-      setApiError(errorMessage);
       setSolveState({
         status: 'ERROR',
         solution: null,
@@ -169,7 +220,7 @@ export const PackingPage: React.FC = () => {
         duration: Date.now() - startTime,
       });
     }
-  }, [containers, items, t]);
+  }, [containers, items, t, getErrorMessage, runValidation]);
 
   // Handle export JSON
   const handleExportJson = useCallback(() => {
@@ -197,6 +248,93 @@ export const PackingPage: React.FC = () => {
     setSelectedItemId(itemId);
   }, []);
 
+  const updatePlacement = useCallback(
+    (itemId: string, updater: (placement: Placement) => Placement) => {
+      let nextPlacements: Placement[] | null = null;
+      let didUpdate = false;
+
+      setSolveState(prev => {
+        if (!prev.solution) return prev;
+
+        nextPlacements = prev.solution.placements.map(placement => {
+          if (!didUpdate && placement.itemId === itemId) {
+            didUpdate = true;
+            return updater(placement);
+          }
+          return placement;
+        });
+
+        return {
+          ...prev,
+          solution: {
+            ...prev.solution,
+            placements: nextPlacements,
+          },
+        };
+      });
+
+      if (nextPlacements && didUpdate) {
+        runValidation(nextPlacements);
+      }
+    },
+    [runValidation],
+  );
+
+  const handleApplyPosition = useCallback(
+    (itemId: string, position: { x: number; y: number; z: number }) => {
+      updatePlacement(itemId, placement => ({
+        ...placement,
+        position,
+      }));
+    },
+    [updatePlacement],
+  );
+
+  const handleApplyOrientation = useCallback(
+    (itemId: string, orientation: Orientation) => {
+      updatePlacement(itemId, placement => ({
+        ...placement,
+        orientation,
+      }));
+    },
+    [updatePlacement],
+  );
+
+  const handleResetSelected = useCallback(
+    (itemId: string) => {
+      if (!originalSolutionRef.current) return;
+      const originalPlacement = originalSolutionRef.current.placements.find(p => p.itemId === itemId);
+      if (!originalPlacement) return;
+
+      updatePlacement(itemId, () => ({
+        ...originalPlacement,
+        position: { ...originalPlacement.position },
+      }));
+    },
+    [updatePlacement],
+  );
+
+  const handleResetAll = useCallback(() => {
+    if (!originalSolutionRef.current || !solveState.solution) return;
+    const resetPlacements = originalSolutionRef.current.placements.map(placement => ({
+      ...placement,
+      position: { ...placement.position },
+    }));
+
+    setSolveState(prev => {
+      if (!prev.solution) return prev;
+      return {
+        ...prev,
+        solution: {
+          ...prev.solution,
+          placements: resetPlacements,
+        },
+      };
+    });
+
+    runValidation(resetPlacements);
+  }, [runValidation, solveState.solution]);
+
   return (
     <div style={styles.page}>
       {/* Page Header */}
@@ -212,6 +350,19 @@ export const PackingPage: React.FC = () => {
         <LanguageSwitcher />
       </header>
 
+      {toast && (
+        <div
+          style={{
+            ...styles.toast,
+            ...(toast.type === 'success' ? styles.toastSuccess : styles.toastError),
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <Translate contentKey={toast.contentKey} values={toast.values} />
+        </div>
+      )}
+
       {/* Main Content */}
       <main style={styles.main}>
         <LeftPanel
@@ -226,6 +377,8 @@ export const PackingPage: React.FC = () => {
           onExportJson={handleExportJson}
           onExportCsv={handleExportCsv}
           onExportZip={handleExportZip}
+          validationResult={validationResult}
+          isValidating={isValidating}
         />
         <RightCanvas
           solveState={solveState}
@@ -233,6 +386,13 @@ export const PackingPage: React.FC = () => {
           items={items}
           selectedItemId={selectedItemId}
           onSelectionChange={handleSelectionChange}
+          validationResult={validationResult}
+          isValidating={isValidating}
+          onApplyPosition={handleApplyPosition}
+          onApplyOrientation={handleApplyOrientation}
+          onResetSelected={handleResetSelected}
+          onResetAll={handleResetAll}
+          onNotify={showToast}
         />
       </main>
     </div>
@@ -275,6 +435,28 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flex: 1,
     overflow: 'hidden',
+  },
+  toast: {
+    position: 'fixed' as const,
+    top: SPACING.lg,
+    right: SPACING.lg,
+    padding: `${SPACING.sm}px ${SPACING.lg}px`,
+    borderRadius: RADIUS.md,
+    boxShadow: SHADOW.md,
+    fontSize: TYPOGRAPHY.fontSize.body,
+    fontWeight: TYPOGRAPHY.fontWeights.medium,
+    zIndex: Z_INDEX.toast,
+    transition: `opacity ${TRANSITION.fast}`,
+  },
+  toastSuccess: {
+    backgroundColor: COLORS.state.successBg,
+    color: COLORS.state.success,
+    border: `1px solid ${COLORS.state.success}`,
+  },
+  toastError: {
+    backgroundColor: COLORS.state.errorBg,
+    color: COLORS.state.error,
+    border: `1px solid ${COLORS.state.error}`,
   },
 };
 

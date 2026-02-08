@@ -5,11 +5,11 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Translate } from 'app/platform/i18n';
+import { Translate, useTranslation } from 'app/platform/i18n';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOW, TRANSITION, Z_INDEX } from '../../theme/tokens';
 import { STANDARD_CONTAINERS, validateExportData, supportsCompressionStream } from '../api';
 import { RotationCubeIcon } from './RotationCubeIcon';
-import type { Container, Item, ItemFormData, ContainerFormData, SolveState, PackingSolution } from '../types';
+import type { Container, Item, ItemFormData, ContainerFormData, SolveState, PackingSolution, ValidateResponse } from '../types';
 
 interface LeftPanelProps {
   containers: Container[];
@@ -23,6 +23,8 @@ interface LeftPanelProps {
   onExportJson: () => void;
   onExportCsv: () => void;
   onExportZip: () => void;
+  validationResult: ValidateResponse | null;
+  isValidating: boolean;
 }
 
 // Helper: Get descriptive rotation label
@@ -39,9 +41,20 @@ const getRotationLabel = (rotation: string): string => {
 };
 
 // Helper: Generate aria-label for disabled export buttons
-const getExportButtonLabelHelper = (solveState: SolveState, format: string): string => {
+const getExportButtonLabelHelper = (
+  solveState: SolveState,
+  format: string,
+  validationResult: ValidateResponse | null,
+  isValidating: boolean,
+): string => {
   if (solveState.status === 'IDLE' || !solveState.solution) {
     return `Export disabled: No solution available`;
+  }
+  if (isValidating) {
+    return `Export disabled: Validation in progress`;
+  }
+  if (validationResult && !validationResult.valid) {
+    return `Export disabled: Validation failed`;
   }
   if (solveState.status === 'ERROR' || solveState.solution.status === 'ERROR') {
     return `Export disabled: Solution contains errors`;
@@ -219,7 +232,11 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
   onExportJson,
   onExportCsv,
   onExportZip,
+  validationResult,
+  isValidating,
 }) => {
+  const { t } = useTranslation();
+
   // Container form state
   const [selectedContainerId, setSelectedContainerId] = useState<string>(STANDARD_CONTAINERS[0].id);
   const [isCustomContainer, setIsCustomContainer] = useState(false);
@@ -352,12 +369,26 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
 
   // Export validation (PR#2A) - using useMemo to avoid recalculation
   const exportValidation = useMemo(() => validateExportData(solveState), [solveState]);
-  const canExport = exportValidation.valid;
+  const hasValidationErrors = !!validationResult && !validationResult.valid;
+  const canExport = exportValidation.valid && !hasValidationErrors && !isValidating;
   const supportsZip = supportsCompressionStream();
 
   const container = containers[0];
   const hasSolution = solveState.status === 'SUCCESS' && solveState.solution;
   const isSolving = solveState.status === 'SOLVING';
+
+  const getValidationMessageKey = (type: string): string => {
+    switch (type) {
+      case 'OUT_OF_BOUNDS':
+        return 'site.packing.manual.validation.out_of_bounds';
+      case 'COLLISION':
+        return 'site.packing.manual.validation.collision';
+      case 'OVERWEIGHT':
+        return 'site.packing.manual.validation.overweight';
+      default:
+        return 'site.packing.manual.validation.unknown';
+    }
+  };
 
   return (
     <div style={styles.panel}>
@@ -788,8 +819,50 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({
           onExportZip={onExportZip}
           canExport={canExport}
           supportsZip={supportsZip}
-          getExportButtonLabel={format => getExportButtonLabelHelper(solveState, format)}
+          getExportButtonLabel={format => getExportButtonLabelHelper(solveState, format, validationResult, isValidating)}
         />
+      )}
+
+      {hasSolution && (
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>
+            <Translate contentKey="site.packing.manual.validation.title">Validation</Translate>
+          </h2>
+
+          {isValidating && (
+            <div style={styles.validationInfo} role="status">
+              <Translate contentKey="site.packing.manual.validation.validating">Validating...</Translate>
+            </div>
+          )}
+
+          {!isValidating && validationResult?.valid && (
+            <div style={styles.validationSuccess}>
+              <Translate contentKey="site.packing.manual.validation.valid">Valid</Translate>
+            </div>
+          )}
+
+          {!isValidating && validationResult && !validationResult.valid && validationResult.errors && (
+            <div style={styles.validationList} role="alert">
+              {validationResult.errors.map((error, index) => {
+                const itemName = items.find(item => item.id === error.itemId)?.name;
+                const errorKey = getValidationMessageKey(error.type);
+                const content = t(errorKey, { item: itemName || error.itemId || '' });
+                return (
+                  <button
+                    type="button"
+                    key={`${error.type}-${index}`}
+                    style={styles.validationItem}
+                    onClick={() => error.itemId && onSelectionChange?.(error.itemId)}
+                    disabled={!error.itemId}
+                  >
+                    <span style={styles.validationDot} />
+                    <span>{content}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
 
       {solveState.status === 'ERROR' && (
@@ -1119,6 +1192,45 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: TYPOGRAPHY.fontSize.body,
     color: COLORS.state.error,
     marginBottom: SPACING.md,
+  },
+  validationInfo: {
+    padding: SPACING.sm,
+    backgroundColor: COLORS.bg.muted,
+    borderRadius: RADIUS.md,
+    fontSize: TYPOGRAPHY.fontSize.small,
+    color: COLORS.text.muted,
+  },
+  validationSuccess: {
+    padding: SPACING.sm,
+    backgroundColor: COLORS.state.successBg,
+    borderRadius: RADIUS.md,
+    fontSize: TYPOGRAPHY.fontSize.small,
+    color: COLORS.state.success,
+  },
+  validationList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: SPACING.sm,
+  },
+  validationItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    padding: `${SPACING.xs}px ${SPACING.sm}px`,
+    borderRadius: RADIUS.md,
+    border: `1px solid ${COLORS.border.default}`,
+    backgroundColor: COLORS.bg.surface,
+    color: COLORS.state.error,
+    fontSize: TYPOGRAPHY.fontSize.small,
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+  },
+  validationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    backgroundColor: COLORS.state.error,
+    flexShrink: 0,
   },
   exportButtons: {
     display: 'flex',

@@ -78,6 +78,40 @@
         "placeholder": "3D 视图将在 PR#2 中实现",
         "loading": "加载 3D 视图中..."
       },
+      "manual": {
+        "title": "手动摆放",
+        "subtitle": "调整选中货物的位置与朝向",
+        "empty": "请选择货物进行编辑",
+        "selectedItem": "当前选中",
+        "orientation": "朝向",
+        "position": "位置",
+        "step": "步进",
+        "rotation": "旋转",
+        "rotationHint": "90° 步进",
+        "rotate90": "旋转 90°",
+        "rotate180": "旋转 180°",
+        "resetSelected": "重置选中",
+        "resetAll": "重置全部",
+        "validation": {
+          "title": "校验",
+          "validating": "校验中...",
+          "valid": "校验通过",
+          "invalid": "校验失败",
+          "ok": "未发现问题",
+          "collision": "发生碰撞：{item}",
+          "out_of_bounds": "超出边界：{item}",
+          "overweight": "超重：总重量超出上限",
+          "unknown": "校验异常：{item}"
+        },
+        "toast": {
+          "positionApplied": "位置已更新",
+          "invalidNumber": "数值无效",
+          "rotationNotAllowed": "该货物不允许该旋转",
+          "rotationApplied": "旋转已应用",
+          "resetSelected": "已重置选中货物",
+          "resetAll": "已重置全部货物"
+        }
+      },
       "validation": {
         "required": "此字段为必填项",
         "positive": "必须大于 0",

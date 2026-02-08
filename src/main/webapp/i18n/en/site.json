@@ -78,6 +78,40 @@
         "placeholder": "3D viewer will be implemented in PR#2",
         "loading": "Loading 3D viewer..."
       },
+      "manual": {
+        "title": "Manual Editing",
+        "subtitle": "Adjust position and rotation for selected item",
+        "empty": "Select an item to edit",
+        "selectedItem": "Selected Item",
+        "orientation": "Orientation",
+        "position": "Position",
+        "step": "Step",
+        "rotation": "Rotation",
+        "rotationHint": "90° steps",
+        "rotate90": "Rotate 90°",
+        "rotate180": "Rotate 180°",
+        "resetSelected": "Reset Selected",
+        "resetAll": "Reset All",
+        "validation": {
+          "title": "Validation",
+          "validating": "Validating...",
+          "valid": "Valid",
+          "invalid": "Invalid",
+          "ok": "No issues detected",
+          "collision": "Collision detected: {item}",
+          "out_of_bounds": "Out of bounds: {item}",
+          "overweight": "Overweight: total exceeds limit",
+          "unknown": "Validation error: {item}"
+        },
+        "toast": {
+          "positionApplied": "Position updated",
+          "invalidNumber": "Invalid number",
+          "rotationNotAllowed": "Rotation not allowed for this item",
+          "rotationApplied": "Rotation applied",
+          "resetSelected": "Selected item reset",
+          "resetAll": "All items reset"
+        }
+      },
       "validation": {
         "required": "This field is required",
         "positive": "Must be greater than 0",

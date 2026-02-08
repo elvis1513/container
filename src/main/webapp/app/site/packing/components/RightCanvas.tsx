@@ -7,9 +7,10 @@
 import React from 'react';
 import { Translate } from 'app/platform/i18n';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, LAYOUT } from '../../theme/tokens';
-import type { PackingSolution } from '../types';
+import type { PackingSolution, Orientation, ValidateResponse } from '../types';
 import type { Item } from '../types';
 import { ThreeViewer } from './ThreeViewer';
+import { SelectionInspector } from './SelectionInspector';
 
 interface RightCanvasProps {
   solveState: {
@@ -20,9 +21,29 @@ interface RightCanvasProps {
   items: Item[] | null;
   selectedItemId?: string;
   onSelectionChange?: (itemId: string) => void;
+  validationResult: ValidateResponse | null;
+  isValidating: boolean;
+  onApplyPosition: (itemId: string, position: { x: number; y: number; z: number }) => void;
+  onApplyOrientation: (itemId: string, orientation: Orientation) => void;
+  onResetSelected: (itemId: string) => void;
+  onResetAll: () => void;
+  onNotify: (type: 'success' | 'error', contentKey: string, values?: Record<string, string | number>) => void;
 }
 
-export const RightCanvas: React.FC<RightCanvasProps> = ({ solveState, containers, items, selectedItemId = '', onSelectionChange }) => {
+export const RightCanvas: React.FC<RightCanvasProps> = ({
+  solveState,
+  containers,
+  items,
+  selectedItemId = '',
+  onSelectionChange,
+  validationResult,
+  isValidating,
+  onApplyPosition,
+  onApplyOrientation,
+  onResetSelected,
+  onResetAll,
+  onNotify,
+}) => {
   const hasSolution = solveState.status === 'SUCCESS' && solveState.solution;
   const container = containers && containers.length > 0 ? containers[0] : null;
 
@@ -68,6 +89,21 @@ export const RightCanvas: React.FC<RightCanvasProps> = ({ solveState, containers
           </div>
         )}
       </div>
+
+      {solveState.solution && (
+        <SelectionInspector
+          selectedItemId={selectedItemId}
+          placements={solveState.solution.placements}
+          items={items || []}
+          validationResult={validationResult}
+          isValidating={isValidating}
+          onApplyPosition={onApplyPosition}
+          onApplyOrientation={onApplyOrientation}
+          onResetSelected={onResetSelected}
+          onResetAll={onResetAll}
+          onNotify={onNotify}
+        />
+      )}
     </div>
   );
 };

@@ -22,6 +22,7 @@ import type {
   ValidationErrorType,
   SolveState,
 } from '../types';
+import { getOrientedDimensions } from '../utils/orientation';
 
 // Error code mapping
 export const ERROR_CODE_MESSAGES = {
@@ -389,37 +390,57 @@ export const validatePacking = async (request: ValidateRequest): Promise<Validat
   const containerVolume = container.innerSize.l * container.innerSize.w * container.innerSize.h;
   let usedVolume = 0;
   let totalWeight = 0;
+  const bounds: Array<{
+    itemId: string;
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    minZ: number;
+    maxZ: number;
+  }> = [];
 
   for (const placement of placements) {
     const item = items.find(i => i.id === placement.itemId);
     if (!item) continue;
 
-    // Check bounds
-    const { l, w, h } = item.size;
-    if (placement.position.x < 0 || placement.position.x + l > container.innerSize.l) {
+    const dims = getOrientedDimensions(item.size, placement.orientation);
+
+    // Check bounds (x=length, y=height, z=width)
+    if (placement.position.x < 0 || placement.position.x + dims.x > container.innerSize.l) {
       errors.push({
         type: 'OUT_OF_BOUNDS',
         message: `Item ${item.name} exceeds container length`,
         itemId: item.id,
       });
     }
-    if (placement.position.y < 0 || placement.position.y + w > container.innerSize.w) {
-      errors.push({
-        type: 'OUT_OF_BOUNDS',
-        message: `Item ${item.name} exceeds container width`,
-        itemId: item.id,
-      });
-    }
-    if (placement.position.z < 0 || placement.position.z + h > container.innerSize.h) {
+    if (placement.position.y < 0 || placement.position.y + dims.y > container.innerSize.h) {
       errors.push({
         type: 'OUT_OF_BOUNDS',
         message: `Item ${item.name} exceeds container height`,
         itemId: item.id,
       });
     }
+    if (placement.position.z < 0 || placement.position.z + dims.z > container.innerSize.w) {
+      errors.push({
+        type: 'OUT_OF_BOUNDS',
+        message: `Item ${item.name} exceeds container width`,
+        itemId: item.id,
+      });
+    }
 
-    usedVolume += l * w * h;
+    usedVolume += dims.x * dims.y * dims.z;
     totalWeight += item.weight;
+
+    bounds.push({
+      itemId: item.id,
+      minX: placement.position.x,
+      maxX: placement.position.x + dims.x,
+      minY: placement.position.y,
+      maxY: placement.position.y + dims.y,
+      minZ: placement.position.z,
+      maxZ: placement.position.z + dims.z,
+    });
   }
 
   // Check weight
@@ -430,18 +451,33 @@ export const validatePacking = async (request: ValidateRequest): Promise<Validat
     });
   }
 
-  // Simple collision check (same position)
-  const positionMap = new Map<string, string>();
-  for (const placement of placements) {
-    const key = `${placement.position.x},${placement.position.y},${placement.position.z}`;
-    if (positionMap.has(key)) {
-      errors.push({
-        type: 'COLLISION',
-        message: `Items overlap at position`,
-        itemId: placement.itemId,
-      });
+  // Collision check (AABB overlap)
+  const collisionItems = new Set<string>();
+  for (let i = 0; i < bounds.length; i += 1) {
+    for (let j = i + 1; j < bounds.length; j += 1) {
+      const a = bounds[i];
+      const b = bounds[j];
+      const overlap = a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY && a.minZ < b.maxZ && a.maxZ > b.minZ;
+
+      if (overlap) {
+        if (!collisionItems.has(a.itemId)) {
+          errors.push({
+            type: 'COLLISION',
+            message: `Items overlap in container`,
+            itemId: a.itemId,
+          });
+          collisionItems.add(a.itemId);
+        }
+        if (!collisionItems.has(b.itemId)) {
+          errors.push({
+            type: 'COLLISION',
+            message: `Items overlap in container`,
+            itemId: b.itemId,
+          });
+          collisionItems.add(b.itemId);
+        }
+      }
     }
-    positionMap.set(key, placement.itemId);
   }
 
   return {

@@ -15,11 +15,11 @@
 
 优先级从高到低：
 
-1) `AGENTS.md`：工程规则、流程约束、质量门槛（最高优先级）
-2) `docs/requirements/**`：需求与范围边界
-3) `docs/specs/**`：接口、数据结构、页面 IA 与交互约束
-4) `docs/ui-lockfiles/**`：页面/功能的 tokens、布局参数、组件边界、交互细则与验收清单
-5) 现有代码 / JHipster 默认约定：仅作为构建与后端基座参考（最低优先级）
+1. `AGENTS.md`：工程规则、流程约束、质量门槛（最高优先级）
+2. `docs/requirements/**`：需求与范围边界
+3. `docs/specs/**`：接口、数据结构、页面 IA 与交互约束
+4. `docs/ui-lockfiles/**`：页面/功能的 tokens、布局参数、组件边界、交互细则与验收清单
+5. 现有代码 / JHipster 默认约定：仅作为构建与后端基座参考（最低优先级）
 
 冲突处理：如果需求/spec/lockfile 与现有实现不一致，**以文档为准**；禁止以“现有代码就是这样”为依据继续扩展旧模式。
 
@@ -27,11 +27,11 @@
 
 ## 1. 强制执行流程（每次任务都要走）
 
-1) **读取上下文**：定位将要改动的模块与目录边界（site/platform/legacy）
-2) **检索与落盘**：先跑 UI/UX skills 检索，并把结果写入对应 Lockfile（见第 2 章）
-3) **先输出计划**：变更范围、文件清单、测试清单、风险点
-4) **再实现**：严格按目录落位与 tokens 规则实现
-5) **自检并记录**：至少 lint / format / test（或写明替代验证步骤）
+1. **读取上下文**：定位将要改动的模块与目录边界（site/platform/legacy）
+2. **检索与落盘**：先跑 UI/UX skills 检索，并把结果写入对应 Lockfile（见第 2 章）
+3. **先输出计划**：变更范围、文件清单、测试清单、风险点
+4. **再实现**：严格按目录落位与 tokens 规则实现
+5. **自检并记录**：至少 lint / format / test（或写明替代验证步骤）
 
 > 阻断规则：**没有对应 UI Lockfile（或 Lockfile 未补全检索记录/验收清单），禁止进入实现。**
 
@@ -51,14 +51,17 @@ python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react
 ```
 
 可用 domain（以脚本 help 为准，严禁擅自扩展）：
+
 - style, prompt, color, chart, landing, product, ux, typography
 
 说明：本 skills 不提供 a11y/performance domain
+
 - 可访问性（键盘/焦点/跳转链接/动效克制）必须用 `--domain ux` 覆盖
 - 性能体验方向（信息密度/交互质感取向）用 `--domain product`
 - 工程性能手段（虚拟列表/懒加载/避免无意义 effect/Profiler）用 `--stack react`
 
 每次前端任务最低检索要求（不得少于）：
+
 - domain：`ux` 至少 2 次查询（布局稳定 + 反馈/键盘）
 - domain：`typography` 至少 1 次查询
 - domain：`color` 至少 1 次查询
@@ -66,6 +69,7 @@ python3 .claude/skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react
 - stack：`react` 至少 2 次查询（性能与工程模式）
 
 输出必须沉淀进 Lockfile（强制）：
+
 - 记录命令
 - 命中摘要（3–5 条）
 - 可执行规则（>=3）
@@ -80,6 +84,7 @@ python3 .claude/skills/ui-ux-pro-max/scripts/search.py "split layout left panel 
 #### 2.1.2 目标页面拆解（强制）
 
 每个页面/功能必须在 Lockfile 参数化拆解并锁定：
+
 - layout：分栏、滚动策略、固定区策略（sticky/fixed）、画布占位与尺寸稳定（CLS）
 - typography：字体选择与字号阶梯
 - color：品牌色/背景/文本/边框/状态色/选中高亮
@@ -112,6 +117,7 @@ python3 .claude/skills/ui-ux-pro-max/scripts/search.py "split layout left panel 
 - `src/main/webapp/app/legacy/**`：可选，用于逐步搬迁/隔离旧 UI（避免智能体误用）
 
 禁止：
+
 - 将新 UI 写入 `entities/**`、`modules/**`、旧 `shared/**`（均视为 legacy UI 区）
 - `app/site/**` import legacy UI 目录（建议后续用 ESLint `no-restricted-imports` 硬限制）
 
